@@ -27,6 +27,11 @@ public sealed class SmtpEmailSender : IEmailSender
 
         if (!string.IsNullOrEmpty(_options.Username))
         {
+            if (string.IsNullOrEmpty(_options.Password))
+            {
+                throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
+            }
+
             await client.AuthenticateAsync(_options.Username, _options.Password, cancellationToken);
         }
 
