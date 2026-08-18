@@ -4,5 +4,8 @@
     "Username": "your-account@gmail.com",
     "Password": "your-app-password",
     "FromAddress": "your-account@gmail.com"
+  },
+  "Fcm": {
+    "CredentialsJson": "{\"type\":\"service_account\",\"project_id\":\"your-project\", ... }"
   }
 }
