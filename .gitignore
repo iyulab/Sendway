@@ -1,6 +1,7 @@
 CLAUDE.md
 claudedocs/
 dev-docs/
+.claude/
 
 # .NET build and IDE artifacts
 bin/
