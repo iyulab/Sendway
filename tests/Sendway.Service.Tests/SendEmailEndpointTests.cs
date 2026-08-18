@@ -12,6 +12,7 @@ namespace Sendway.Service.Tests;
 public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
+    private readonly FakeEmailSender _fakeEmailSender = new();
 
     public SendEmailEndpointTests(WebApplicationFactory<Program> factory)
     {
@@ -20,7 +21,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
-                services.AddSingleton<IEmailSender>(new FakeEmailSender());
+                services.AddSingleton<IEmailSender>(_fakeEmailSender);
             });
         });
     }
@@ -29,11 +30,15 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Post_WithValidRequest_Returns200()
     {
         var client = _factory.CreateClient();
-        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+        var request = new SendEmailRequest("user@example.com", "Distinct Subject", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(_fakeEmailSender.LastMessage);
+        Assert.Equal("user@example.com", _fakeEmailSender.LastMessage!.To);
+        Assert.Equal("Distinct Subject", _fakeEmailSender.LastMessage!.Subject);
+        Assert.Equal("Distinct Body", _fakeEmailSender.LastMessage!.Body);
     }
 
     [Fact]
@@ -70,6 +75,8 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     {
         private readonly bool _throwOnSend;
 
+        public EmailMessage? LastMessage { get; private set; }
+
         public FakeEmailSender(bool throwOnSend = false)
         {
             _throwOnSend = throwOnSend;
@@ -81,6 +88,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             {
                 throw new InvalidOperationException("simulated SMTP failure");
             }
+            LastMessage = message;
             return Task.CompletedTask;
         }
     }

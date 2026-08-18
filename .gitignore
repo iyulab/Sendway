@@ -9,3 +9,5 @@ obj/
 *.user
 *.suo
 *.sln.docstates
+
+src/Sendway.Service/appsettings.Development.json
