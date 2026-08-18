@@ -21,6 +21,14 @@
 - **SDK**: C# 라이브러리로 기존 .NET 프로젝트에 직접 포함
 - **Docker 서비스**: 독립 실행형 이미지를 관리형 클라우드 인스턴스나 자체 환경에 배포, 언어 무관하게 HTTP API로 호출
 
+```bash
+docker build -f src/Sendway.Service/Dockerfile -t sendway-service .
+docker run -p 8080:8080 \
+  -e Smtp__Provider=Gmail \
+  -e Smtp__Username=... -e Smtp__Password=... -e Smtp__FromAddress=... \
+  sendway-service
+```
+
 ## 문서
 
 - [개요](docs/overview.md)

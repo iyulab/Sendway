@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/.vs/
+tests/
+claudedocs/
+dev-docs/
+.git/
+.github/
+.claude/
+docs/
+**/appsettings.Development.json
+*.md
