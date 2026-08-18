@@ -1,3 +1,11 @@
 CLAUDE.md
 claudedocs/
 dev-docs/
+
+# .NET build and IDE artifacts
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.sln.docstates
