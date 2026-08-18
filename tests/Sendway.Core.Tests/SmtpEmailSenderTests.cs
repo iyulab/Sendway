@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Options;
 using Sendway.Core;
 using Xunit;
 
@@ -10,13 +9,13 @@ public class SmtpEmailSenderTests
     [Fact]
     public async Task SendAsync_ToLocalSmtpCatcher_CompletesWithoutException()
     {
-        var options = Options.Create(new SmtpOptions
+        var credentialStore = new SingleCredentialStore(ChannelCredentialNames.Smtp, new SmtpOptions
         {
             Host = "localhost",
             Port = 2525,
             FromAddress = "sendway@localhost"
         });
-        var sender = new SmtpEmailSender(options);
+        var sender = new SmtpEmailSender(credentialStore);
         var message = new EmailMessage("recipient@localhost", "L0 test", "walking skeleton");
 
         await sender.SendAsync(message);

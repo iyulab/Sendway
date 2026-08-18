@@ -12,3 +12,9 @@ obj/
 *.sln.docstates
 
 src/Sendway.Service/appsettings.Development.json
+
+# Runtime-generated local state (encrypted channel credentials + Data Protection key ring)
+src/Sendway.Service/*.db
+src/Sendway.Service/*.db-shm
+src/Sendway.Service/*.db-wal
+src/Sendway.Service/dp-keys/

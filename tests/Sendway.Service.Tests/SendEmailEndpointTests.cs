@@ -9,15 +9,17 @@ using Xunit;
 
 namespace Sendway.Service.Tests;
 
-public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly FakeEmailSender _fakeEmailSender = new();
+    private readonly TestIsolatedStorage _storage = new();
 
     public SendEmailEndpointTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {
+            builder.ConfigureAppConfiguration(_storage.Apply);
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
@@ -25,6 +27,8 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             });
         });
     }
+
+    public void Dispose() => _storage.Dispose();
 
     [Fact]
     public async Task Post_WithValidRequest_Returns200()
@@ -39,6 +43,29 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal("user@example.com", _fakeEmailSender.LastMessage!.To);
         Assert.Equal("Distinct Subject", _fakeEmailSender.LastMessage!.Subject);
         Assert.Equal("Distinct Body", _fakeEmailSender.LastMessage!.Body);
+
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.Id);
+    }
+
+    [Fact]
+    public async Task Post_WithValidRequest_StatusIsQueryableAfterward()
+    {
+        var client = _factory.CreateClient();
+        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+
+        var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
+        var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
+
+        var statusResponse = await client.GetAsync($"/messages/{sendBody!.Id}");
+        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        Assert.Equal("email", status!.Channel);
+        Assert.Equal("user@example.com", status.Recipient);
+        Assert.Equal("Sent", status.Status);
+        Assert.Null(status.Error);
     }
 
     [Fact]
@@ -53,6 +80,34 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithMalformedEmailAddress_RecordsFailedStatusQueryableById()
+    {
+        var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IEmailSender>();
+                services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.InvalidRecipient));
+            });
+        });
+        var client = factory.CreateClient();
+        var request = new SendEmailRequest("not-an-email-address", "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageFailureResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.MessageId);
+
+        var statusResponse = await client.GetAsync($"/messages/{body.MessageId}");
+        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+
+        Assert.Equal("Failed", status!.Status);
+        Assert.NotNull(status.Error);
+    }
+
+    [Fact]
     public async Task Post_WhenSenderThrows_Returns502()
     {
         var factory = _factory.WithWebHostBuilder(builder =>
@@ -60,7 +115,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
-                services.AddSingleton<IEmailSender>(new FakeEmailSender(throwOnSend: true));
+                services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.Other));
             });
         });
         var client = factory.CreateClient();
@@ -71,25 +126,46 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Get_UnknownId_Returns404()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync($"/messages/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private enum FailureMode
+    {
+        None,
+        InvalidRecipient,
+        Other
+    }
+
     private sealed class FakeEmailSender : IEmailSender
     {
-        private readonly bool _throwOnSend;
+        private readonly FailureMode _failureMode;
 
         public EmailMessage? LastMessage { get; private set; }
 
-        public FakeEmailSender(bool throwOnSend = false)
+        public FakeEmailSender(FailureMode failureMode = FailureMode.None)
         {
-            _throwOnSend = throwOnSend;
+            _failureMode = failureMode;
         }
 
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
-            if (_throwOnSend)
+            switch (_failureMode)
             {
-                throw new InvalidOperationException("simulated SMTP failure");
+                case FailureMode.InvalidRecipient:
+                    throw new InvalidRecipientException("simulated malformed email address");
+                case FailureMode.Other:
+                    throw new InvalidOperationException("simulated SMTP failure");
+                default:
+                    LastMessage = message;
+                    return Task.CompletedTask;
             }
-            LastMessage = message;
-            return Task.CompletedTask;
         }
     }
 }

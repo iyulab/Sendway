@@ -24,10 +24,26 @@
 ```bash
 docker build -f src/Sendway.Service/Dockerfile -t sendway-service .
 docker run -p 8080:8080 \
+  -v sendway-data:/data \
   -e Smtp__Provider=Gmail \
   -e Smtp__Username=... -e Smtp__Password=... -e Smtp__FromAddress=... \
   sendway-service
 ```
+
+채널 자격증명(암호화됨)과 발송 상태는 `/data`에 저장됩니다. 이 볼륨을 마운트하지 않으면 컨테이너를
+새로 만들 때마다 초기화됩니다(재기동 시 위 환경변수 값으로 자동 재시드되므로 서비스 자체는 계속
+동작하지만, 그 사이의 발송 이력 조회 결과는 사라집니다).
+
+## 개발
+
+테스트 중 하나(`Sendway.Core.Tests`, `Category=Integration`)는 로컬 SMTP 캐처가 필요합니다:
+
+```bash
+docker run -d --name sendway-smtp4dev -p 2525:25 -p 5001:80 rnwood/smtp4dev
+dotnet test
+```
+
+캐처 없이 실행하려면 `dotnet test --filter "Category!=Integration"`.
 
 ## 문서
 

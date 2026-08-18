@@ -9,15 +9,17 @@ using Xunit;
 
 namespace Sendway.Service.Tests;
 
-public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly FakePushSender _fakePushSender = new();
+    private readonly TestIsolatedStorage _storage = new();
 
     public SendPushEndpointTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {
+            builder.ConfigureAppConfiguration(_storage.Apply);
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IPushSender>();
@@ -25,6 +27,8 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
             });
         });
     }
+
+    public void Dispose() => _storage.Dispose();
 
     [Fact]
     public async Task Post_WithValidRequest_Returns200()
@@ -39,6 +43,16 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal("device-token-123", _fakePushSender.LastMessage!.DeviceToken);
         Assert.Equal("Distinct Title", _fakePushSender.LastMessage!.Title);
         Assert.Equal("Distinct Body", _fakePushSender.LastMessage!.Body);
+
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.Id);
+
+        var statusResponse = await client.GetAsync($"/messages/{body.Id}");
+        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+        Assert.Equal("push", status!.Channel);
+        Assert.Equal("device-token-123", status.Recipient);
+        Assert.Equal("Sent", status.Status);
     }
 
     [Fact]
@@ -70,6 +84,35 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Post_WhenTokenInvalid_RecordsFailedStatusQueryableById()
+    {
+        var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPushSender>();
+                services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.InvalidRecipient));
+            });
+        });
+        var client = factory.CreateClient();
+        var request = new SendPushRequest("expired-token", "Title", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/push", request);
+        var body = await response.Content.ReadFromJsonAsync<SendFailureResponse>();
+
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.MessageId);
+
+        var statusResponse = await client.GetAsync($"/messages/{body.MessageId}");
+        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+
+        Assert.Equal("Failed", status!.Status);
+        Assert.NotNull(status.Error);
+    }
+
+    private sealed record SendFailureResponse(string? Error, Guid MessageId);
 
     [Fact]
     public async Task Post_WhenSenderThrows_Returns502()

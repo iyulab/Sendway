@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="8.0.30" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.30" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
   </ItemGroup>
 
