@@ -22,8 +22,10 @@ public sealed class SmtpEmailSender : IEmailSender
         mimeMessage.Subject = message.Subject;
         mimeMessage.Body = new TextPart("plain") { Text = message.Body };
 
+        var (host, port) = SmtpProviderPresets.Resolve(_options);
+
         using var client = new SmtpClient();
-        await client.ConnectAsync(_options.Host, _options.Port, SecureSocketOptions.Auto, cancellationToken);
+        await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
 
         if (!string.IsNullOrEmpty(_options.Username))
         {
