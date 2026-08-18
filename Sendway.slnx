@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sendway.Core/Sendway.Core.csproj" />
+    <Project Path="src/Sendway.Service/Sendway.Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sendway.Core.Tests/Sendway.Core.Tests.csproj" />
+    <Project Path="tests/Sendway.Service.Tests/Sendway.Service.Tests.csproj" />
+  </Folder>
+</Solution>

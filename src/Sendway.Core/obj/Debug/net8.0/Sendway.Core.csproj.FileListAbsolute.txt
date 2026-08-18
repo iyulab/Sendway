@@ -1,0 +1,13 @@
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\bin\Debug\net8.0\Sendway.Core.deps.json
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\bin\Debug\net8.0\Sendway.Core.dll
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\bin\Debug\net8.0\Sendway.Core.pdb
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.csproj.AssemblyReference.cache
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.AssemblyInfoInputs.cache
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.AssemblyInfo.cs
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.csproj.CoreCompileInputs.cache
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.sourcelink.json
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.dll
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\refint\Sendway.Core.dll
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\Sendway.Core.pdb
+D:\data\Sendway\.claude\worktrees\l0-walking-skeleton\src\Sendway.Core\obj\Debug\net8.0\ref\Sendway.Core.dll
