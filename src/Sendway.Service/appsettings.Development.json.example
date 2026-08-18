@@ -1,0 +1,8 @@
+{
+  "Smtp": {
+    "Provider": "Gmail",
+    "Username": "your-account@gmail.com",
+    "Password": "your-app-password",
+    "FromAddress": "your-account@gmail.com"
+  }
+}
