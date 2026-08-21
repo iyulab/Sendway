@@ -6,6 +6,7 @@ using Sendway.Core;
 using Sendway.Service;
 using Sendway.Service.Auth;
 using Sendway.Service.Endpoints;
+using Sendway.Service.Endpoints.Admin;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +45,12 @@ var messages = app.MapGroup("/messages").AddEndpointFilter<TenantAuthFilter>();
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapGetMessageStatusEndpoint();
+
+var admin = app.MapGroup("/admin").AddEndpointFilter<AdminAuthFilter>();
+admin.MapCreateTenantEndpoint();
+admin.MapListTenantsEndpoint();
+admin.MapSetTenantActiveEndpoint();
+admin.MapRotateTenantKeyEndpoint();
 
 app.Run();
 
