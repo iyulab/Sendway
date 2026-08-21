@@ -8,10 +8,14 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
     public DbSet<MessageRecord> MessageRecords => Set<MessageRecord>();
 
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChannelCredential>().HasKey(c => c.Channel);
 
         modelBuilder.Entity<MessageRecord>().Property(m => m.Status).HasConversion<string>();
+
+        modelBuilder.Entity<Tenant>().HasIndex(t => t.ApiKeyHash).IsUnique();
     }
 }
