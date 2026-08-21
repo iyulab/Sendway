@@ -35,15 +35,15 @@ public sealed class ChannelCredentialSeeder : IHostedService
         }
 
         var smtp = _configuration.GetSection("Smtp").Get<SmtpOptions>();
-        if (smtp is not null && await _credentialStore.GetAsync<SmtpOptions>(ChannelCredentialNames.Smtp, cancellationToken) is null)
+        if (smtp is not null && await _credentialStore.GetAsync<SmtpOptions>(null, ChannelCredentialNames.Smtp, cancellationToken) is null)
         {
-            await _credentialStore.SetAsync(ChannelCredentialNames.Smtp, smtp, cancellationToken);
+            await _credentialStore.SetAsync(null, ChannelCredentialNames.Smtp, smtp, cancellationToken);
         }
 
         var fcm = _configuration.GetSection("Fcm").Get<FcmOptions>();
-        if (fcm is not null && await _credentialStore.GetAsync<FcmOptions>(ChannelCredentialNames.Fcm, cancellationToken) is null)
+        if (fcm is not null && await _credentialStore.GetAsync<FcmOptions>(null, ChannelCredentialNames.Fcm, cancellationToken) is null)
         {
-            await _credentialStore.SetAsync(ChannelCredentialNames.Fcm, fcm, cancellationToken);
+            await _credentialStore.SetAsync(null, ChannelCredentialNames.Fcm, fcm, cancellationToken);
         }
     }
 

@@ -9,11 +9,12 @@ using Xunit;
 
 namespace Sendway.Service.Tests;
 
-public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly FakePushSender _fakePushSender = new();
     private readonly TestIsolatedStorage _storage = new();
+    private string _apiKey = null!;
 
     public SendPushEndpointTests(WebApplicationFactory<Program> factory)
     {
@@ -28,12 +29,28 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
         });
     }
 
-    public void Dispose() => _storage.Dispose();
+    public async Task InitializeAsync()
+    {
+        (_, _apiKey) = await TestTenantSeeder.SeedAsync(_factory);
+    }
+
+    public Task DisposeAsync()
+    {
+        _storage.Dispose();
+        return Task.CompletedTask;
+    }
+
+    private HttpClient CreateAuthenticatedClient(WebApplicationFactory<Program>? factory = null)
+    {
+        var client = (factory ?? _factory).CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
+        return client;
+    }
 
     [Fact]
     public async Task Post_WithValidRequest_Returns200()
     {
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var request = new SendPushRequest("device-token-123", "Distinct Title", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
@@ -56,9 +73,20 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
-    public async Task Post_WithMissingDeviceToken_Returns400()
+    public async Task Post_WithoutApiKey_Returns401()
     {
         var client = _factory.CreateClient();
+        var request = new SendPushRequest("device-token-123", "Title", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/push", request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_WithMissingDeviceToken_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
         var request = new SendPushRequest(null, "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
@@ -77,7 +105,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
                 services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.InvalidRecipient));
             });
         });
-        var client = factory.CreateClient();
+        var client = CreateAuthenticatedClient(factory);
         var request = new SendPushRequest("expired-token", "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
@@ -96,7 +124,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
                 services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.InvalidRecipient));
             });
         });
-        var client = factory.CreateClient();
+        var client = CreateAuthenticatedClient(factory);
         var request = new SendPushRequest("expired-token", "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
@@ -125,7 +153,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
                 services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.Other));
             });
         });
-        var client = factory.CreateClient();
+        var client = CreateAuthenticatedClient(factory);
         var request = new SendPushRequest("device-token-123", "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);

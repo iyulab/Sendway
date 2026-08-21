@@ -9,11 +9,12 @@ using Xunit;
 
 namespace Sendway.Service.Tests;
 
-public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly FakeEmailSender _fakeEmailSender = new();
     private readonly TestIsolatedStorage _storage = new();
+    private string _apiKey = null!;
 
     public SendEmailEndpointTests(WebApplicationFactory<Program> factory)
     {
@@ -28,12 +29,28 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         });
     }
 
-    public void Dispose() => _storage.Dispose();
+    public async Task InitializeAsync()
+    {
+        (_, _apiKey) = await TestTenantSeeder.SeedAsync(_factory);
+    }
+
+    public Task DisposeAsync()
+    {
+        _storage.Dispose();
+        return Task.CompletedTask;
+    }
+
+    private HttpClient CreateAuthenticatedClient(WebApplicationFactory<Program>? factory = null)
+    {
+        var client = (factory ?? _factory).CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
+        return client;
+    }
 
     [Fact]
     public async Task Post_WithValidRequest_Returns200()
     {
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var request = new SendEmailRequest("user@example.com", "Distinct Subject", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
@@ -50,9 +67,32 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task Post_WithValidRequest_StatusIsQueryableAfterward()
+    public async Task Post_WithoutApiKey_Returns401()
     {
         var client = _factory.CreateClient();
+        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_WithInvalidApiKey_Returns401()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", "sw_not-a-real-key");
+        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_WithValidRequest_StatusIsQueryableAfterward()
+    {
+        var client = CreateAuthenticatedClient();
         var request = new SendEmailRequest("user@example.com", "Subject", "Body");
 
         var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
@@ -71,7 +111,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task Post_WithMissingTo_Returns400()
     {
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
         var request = new SendEmailRequest(null, "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
@@ -90,7 +130,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
                 services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.InvalidRecipient));
             });
         });
-        var client = factory.CreateClient();
+        var client = CreateAuthenticatedClient(factory);
         var request = new SendEmailRequest("not-an-email-address", "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
@@ -118,7 +158,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
                 services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.Other));
             });
         });
-        var client = factory.CreateClient();
+        var client = CreateAuthenticatedClient(factory);
         var request = new SendEmailRequest("user@example.com", "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
@@ -129,11 +169,27 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task Get_UnknownId_Returns404()
     {
-        var client = _factory.CreateClient();
+        var client = CreateAuthenticatedClient();
 
         var response = await client.GetAsync($"/messages/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Get_MessageBelongingToAnotherTenant_Returns404()
+    {
+        var client = CreateAuthenticatedClient();
+        var sendResponse = await client.PostAsJsonAsync("/messages/email", new SendEmailRequest("user@example.com", "Subject", "Body"));
+        var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
+
+        var (_, otherApiKey) = await TestTenantSeeder.SeedAsync(_factory, "other-tenant");
+        var otherClient = _factory.CreateClient();
+        otherClient.DefaultRequestHeaders.Add("X-Api-Key", otherApiKey);
+
+        var statusResponse = await otherClient.GetAsync($"/messages/{sendBody!.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, statusResponse.StatusCode);
     }
 
     private enum FailureMode

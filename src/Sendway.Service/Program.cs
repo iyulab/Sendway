@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Sendway.Core;
 using Sendway.Service;
+using Sendway.Service.Auth;
 using Sendway.Service.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +29,7 @@ builder.Services.AddDbContextFactory<SendwayDbContext>((services, options) =>
     options.UseSqlite(connectionString);
 });
 builder.Services.AddSingleton<ICredentialStore, EncryptedCredentialStore>();
+builder.Services.AddSingleton<ITenantStore, TenantStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMessageStatusStore, MessageStatusStore>();
 
@@ -38,9 +40,10 @@ builder.Services.AddHostedService<ChannelCredentialSeeder>();
 
 var app = builder.Build();
 
-app.MapSendEmailEndpoint();
-app.MapSendPushEndpoint();
-app.MapGetMessageStatusEndpoint();
+var messages = app.MapGroup("/messages").AddEndpointFilter<TenantAuthFilter>();
+messages.MapSendEmailEndpoint();
+messages.MapSendPushEndpoint();
+messages.MapGetMessageStatusEndpoint();
 
 app.Run();
 
