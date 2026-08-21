@@ -26,7 +26,21 @@ public sealed class FcmPushSender : IPushSender
             tenantId => new Lazy<Task<FirebaseApp>>(
                 () => CreateAppAsync(tenantId, _credentialStore),
                 LazyThreadSafetyMode.ExecutionAndPublication));
-        var app = await lazyApp.Value;
+
+        FirebaseApp app;
+        try
+        {
+            app = await lazyApp.Value;
+        }
+        catch
+        {
+            // A faulted creation (e.g. missing/invalid FCM credential) must not stay cached
+            // forever — remove it so the next send retries instead of rethrowing the same stale
+            // failure until process restart. Remove only the exact entry we saw fail, in case a
+            // concurrent caller already replaced it (e.g. via InvalidateTenant below).
+            _apps.TryRemove(new KeyValuePair<Guid, Lazy<Task<FirebaseApp>>>(message.TenantId, lazyApp));
+            throw;
+        }
 
         var fcmMessage = new Message
         {
@@ -51,6 +65,13 @@ public sealed class FcmPushSender : IPushSender
         {
             throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
         }
+    }
+
+    // Task 5(SetTenantCredentialEndpoint)가 이 테넌트의 FCM 자격증명을 새로 등록/교체한 뒤 호출한다
+    // — 캐시된 FirebaseApp이 옛 자격증명을 계속 쓰는 걸 막기 위함. 다음 발송 시 재생성됨.
+    public void InvalidateTenant(Guid tenantId)
+    {
+        _apps.TryRemove(tenantId, out _);
     }
 
     private static async Task<FirebaseApp> CreateAppAsync(Guid tenantId, ICredentialStore credentialStore)
