@@ -51,6 +51,7 @@ admin.MapCreateTenantEndpoint();
 admin.MapListTenantsEndpoint();
 admin.MapSetTenantActiveEndpoint();
 admin.MapRotateTenantKeyEndpoint();
+admin.MapSetTenantCredentialEndpoint();
 
 app.Run();
 
