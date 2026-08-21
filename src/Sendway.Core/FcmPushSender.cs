@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
@@ -6,42 +7,26 @@ namespace Sendway.Core;
 
 public sealed class FcmPushSender : IPushSender
 {
-    private readonly Lazy<Task<FirebaseApp>> _app;
+    private readonly ICredentialStore _credentialStore;
+
+    // 테넌트마다 다른 FCM 프로젝트 자격증명(오버라이드)을 쓸 수 있어, FirebaseApp을 프로세스당
+    // 하나로 캐시하면 두 번째 테넌트부터 첫 테넌트의 credential이 잘못 재사용된다. 테넌트별로
+    // Lazy<Task<FirebaseApp>>를 따로 캐시해 각 테넌트당 최초 1회만 생성한다.
+    private readonly ConcurrentDictionary<Guid, Lazy<Task<FirebaseApp>>> _apps = new();
 
     public FcmPushSender(ICredentialStore credentialStore)
     {
-        // Lazy<Task<T>>: FirebaseApp은 프로세스 생애주기 동안 정확히 한 번만 생성되고
-        // dispose되지 않는다 — Program.cs가 IPushSender를 singleton으로 등록하는 한
-        // (인스턴스가 프로세스당 하나) 안전하다. scoped/transient로 바뀌면 FirebaseApp이
-        // 인스턴스마다 누적된다. credential은 이제 ICredentialStore(암호화 저장소)에서
-        // 비동기로 읽어와야 해서 생성자에서 동기적으로 만들 수 없어 지연 초기화한다.
-        _app = new Lazy<Task<FirebaseApp>>(
-            () => CreateAppAsync(credentialStore),
-            LazyThreadSafetyMode.ExecutionAndPublication);
-    }
-
-    private static async Task<FirebaseApp> CreateAppAsync(ICredentialStore credentialStore)
-    {
-        var options = await credentialStore.GetAsync<FcmOptions>(ChannelCredentialNames.Fcm)
-            ?? throw new InvalidOperationException("Fcm channel credentials have not been configured.");
-
-        if (string.IsNullOrWhiteSpace(options.CredentialsJson))
-        {
-            throw new InvalidOperationException("FcmOptions.CredentialsJson is required.");
-        }
-
-        // GoogleCredential.FromJson: 배포자가 암호화 저장소를 통해 직접 공급하는 credential이라
-        // "외부 소스 미검증" 위험 시나리오에 해당하지 않음. CredentialFactory 마이그레이션은
-        // 실제 자격증명으로 검증 가능해지면 진행.
-#pragma warning disable CS0618
-        var credential = GoogleCredential.FromJson(options.CredentialsJson);
-#pragma warning restore CS0618
-        return FirebaseApp.Create(new AppOptions { Credential = credential }, Guid.NewGuid().ToString());
+        _credentialStore = credentialStore;
     }
 
     public async Task SendAsync(PushMessage message, CancellationToken cancellationToken = default)
     {
-        var app = await _app.Value;
+        var lazyApp = _apps.GetOrAdd(
+            message.TenantId,
+            tenantId => new Lazy<Task<FirebaseApp>>(
+                () => CreateAppAsync(tenantId, _credentialStore),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        var app = await lazyApp.Value;
 
         var fcmMessage = new Message
         {
@@ -66,5 +51,24 @@ public sealed class FcmPushSender : IPushSender
         {
             throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
         }
+    }
+
+    private static async Task<FirebaseApp> CreateAppAsync(Guid tenantId, ICredentialStore credentialStore)
+    {
+        var options = await credentialStore.GetAsync<FcmOptions>(tenantId, ChannelCredentialNames.Fcm)
+            ?? throw new InvalidOperationException("Fcm channel credentials have not been configured.");
+
+        if (string.IsNullOrWhiteSpace(options.CredentialsJson))
+        {
+            throw new InvalidOperationException("FcmOptions.CredentialsJson is required.");
+        }
+
+        // GoogleCredential.FromJson: 배포자가 암호화 저장소를 통해 직접 공급하는 credential이라
+        // "외부 소스 미검증" 위험 시나리오에 해당하지 않음. CredentialFactory 마이그레이션은
+        // 실제 자격증명으로 검증 가능해지면 진행.
+#pragma warning disable CS0618
+        var credential = GoogleCredential.FromJson(options.CredentialsJson);
+#pragma warning restore CS0618
+        return FirebaseApp.Create(new AppOptions { Credential = credential }, Guid.NewGuid().ToString());
     }
 }

@@ -23,7 +23,7 @@ public sealed class SmtpEmailSender : IEmailSender
             throw new InvalidRecipientException($"'{message.To}' is not a valid email address.");
         }
 
-        var options = await _credentialStore.GetAsync<SmtpOptions>(ChannelCredentialNames.Smtp, cancellationToken)
+        var options = await _credentialStore.GetAsync<SmtpOptions>(message.TenantId, ChannelCredentialNames.Smtp, cancellationToken)
             ?? throw new InvalidOperationException("Smtp channel credentials have not been configured.");
 
         var mimeMessage = new MimeMessage();

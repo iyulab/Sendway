@@ -19,7 +19,7 @@ public class SmtpEmailSenderValidationTests
             FromAddress = "sendway@localhost"
         });
         var sender = new SmtpEmailSender(credentialStore);
-        var message = new EmailMessage(to, "Subject", "Body");
+        var message = new EmailMessage(Guid.NewGuid(), to, "Subject", "Body");
 
         await Assert.ThrowsAsync<InvalidRecipientException>(() => sender.SendAsync(message));
     }

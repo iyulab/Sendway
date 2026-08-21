@@ -14,6 +14,7 @@ public sealed class MessageStatusStore : IMessageStatusStore
     }
 
     public async Task<Guid> RecordAsync(
+        Guid tenantId,
         string channel,
         string recipient,
         MessageDeliveryStatus status,
@@ -25,6 +26,7 @@ public sealed class MessageStatusStore : IMessageStatusStore
         var record = new MessageRecord
         {
             Id = Guid.NewGuid(),
+            TenantId = tenantId,
             Channel = channel,
             Recipient = recipient,
             Status = status,

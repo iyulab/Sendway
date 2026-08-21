@@ -3,6 +3,7 @@ namespace Sendway.Core;
 public interface IMessageStatusStore
 {
     Task<Guid> RecordAsync(
+        Guid tenantId,
         string channel,
         string recipient,
         MessageDeliveryStatus status,

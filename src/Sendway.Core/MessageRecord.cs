@@ -4,6 +4,8 @@ public sealed class MessageRecord
 {
     public required Guid Id { get; init; }
 
+    public required Guid TenantId { get; init; }
+
     public required string Channel { get; init; }
 
     public required string Recipient { get; init; }
