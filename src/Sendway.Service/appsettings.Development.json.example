@@ -7,5 +7,8 @@
   },
   "Fcm": {
     "CredentialsJson": "{\"type\":\"service_account\",\"project_id\":\"your-project\", ... }"
+  },
+  "Sendway": {
+    "AdminApiKey": "generate-a-long-random-value-and-keep-it-secret"
   }
 }
