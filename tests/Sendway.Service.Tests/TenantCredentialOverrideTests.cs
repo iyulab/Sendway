@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,14 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {
+            // This test asserts on the *absence* of a shared credential for an unrelated tenant.
+            // The default WebApplicationFactory environment is "Development", which would load
+            // whatever local, gitignored appsettings.Development.json happens to exist on the
+            // machine running the tests (e.g. a developer's real SMTP credentials from manual
+            // testing) — making the assertion pass or fail depending on the machine, not the code.
+            // "Testing" has no corresponding appsettings.Testing.json, so only the tracked,
+            // secret-free appsettings.json loads.
+            builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((context, configuration) =>
             {
                 _storage.Apply(context, configuration);
