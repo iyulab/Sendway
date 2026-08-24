@@ -25,9 +25,20 @@ builder.Services.AddOptions<KeyManagementOptions>()
 
 builder.Services.AddDbContextFactory<SendwayDbContext>((services, options) =>
 {
-    var connectionString = services.GetRequiredService<IConfiguration>().GetConnectionString("Sendway")
-        ?? "Data Source=sendway.db";
-    options.UseSqlite(connectionString);
+    var configuration = services.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("Sendway")
+        ?? "Host=localhost;Database=sendway;Username=postgres;Password=postgres";
+
+    // Tests substitute an isolated Sqlite file per test class instead of standing up a real
+    // Postgres server (see Sendway.Service.Tests.TestIsolatedStorage).
+    if (configuration["Sendway:DatabaseProvider"] == "Sqlite")
+    {
+        options.UseSqlite(connectionString);
+    }
+    else
+    {
+        options.UseNpgsql(connectionString);
+    }
 });
 builder.Services.AddSingleton<ICredentialStore, EncryptedCredentialStore>();
 builder.Services.AddSingleton<ITenantStore, TenantStore>();

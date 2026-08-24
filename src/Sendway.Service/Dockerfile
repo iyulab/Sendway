@@ -13,9 +13,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Persist the encrypted credential store and its Data Protection key ring outside the
-# container's writable layer so they survive a redeploy/restart. Mount a volume at /data.
-ENV ConnectionStrings__Sendway="Data Source=/data/sendway.db"
+# Persist the Data Protection key ring outside the container's writable layer so it survives a
+# redeploy/restart. Mount a volume at /data. (Encrypted credentials/tenants/message records live in
+# PostgreSQL, supplied via ConnectionStrings__Sendway at deploy time — not a local file, so it isn't
+# defaulted here.)
 ENV Sendway__DataProtectionKeyPath="/data/dp-keys"
 VOLUME ["/data"]
 

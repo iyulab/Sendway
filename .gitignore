@@ -13,6 +13,10 @@ obj/
 
 src/Sendway.Service/appsettings.Development.json
 
+# Deployment secrets (Azure/Cloudflare keys, generated admin/tenant API keys)
+.env.local
+.env*.local
+
 # Runtime-generated local state (encrypted channel credentials + Data Protection key ring)
 src/Sendway.Service/*.db
 src/Sendway.Service/*.db-shm
