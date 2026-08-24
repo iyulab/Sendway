@@ -4,6 +4,14 @@
     <ProjectReference Include="..\Sendway.Core\Sendway.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Design-time only, for `dotnet ef migrations add` — see Migrations/ADOPTION.md. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

@@ -95,6 +95,30 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
+    public async Task Post_WithOversizedTitle_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendPushRequest("device-token-123", new string('t', 201), "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/push", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakePushSender.LastMessage);
+    }
+
+    [Fact]
+    public async Task Post_WithOversizedBody_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendPushRequest("device-token-123", "Title", new string('b', 4001));
+
+        var response = await client.PostAsJsonAsync("/messages/push", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakePushSender.LastMessage);
+    }
+
+    [Fact]
     public async Task Post_WhenTokenInvalid_Returns400()
     {
         var factory = _factory.WithWebHostBuilder(builder =>

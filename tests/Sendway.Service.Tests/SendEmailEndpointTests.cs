@@ -120,6 +120,30 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithOversizedSubject_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest("user@example.com", new string('s', 201), "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage);
+    }
+
+    [Fact]
+    public async Task Post_WithOversizedBody_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest("user@example.com", "Subject", new string('b', 1_000_001));
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage);
+    }
+
+    [Fact]
     public async Task Post_WithMalformedEmailAddress_RecordsFailedStatusQueryableById()
     {
         var factory = _factory.WithWebHostBuilder(builder =>

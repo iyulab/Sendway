@@ -34,20 +34,25 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var (host, port) = SmtpProviderPresets.Resolve(options);
 
-        using var client = new SmtpClient();
-        await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
-
-        if (!string.IsNullOrEmpty(options.Username))
+        // A fresh SmtpClient per attempt — one that failed to connect/authenticate isn't assumed
+        // reusable on retry.
+        await RetryPolicy.ExecuteAsync(async () =>
         {
-            if (string.IsNullOrEmpty(options.Password))
+            using var client = new SmtpClient();
+            await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
+
+            if (!string.IsNullOrEmpty(options.Username))
             {
-                throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
+                if (string.IsNullOrEmpty(options.Password))
+                {
+                    throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
+                }
+
+                await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
             }
 
-            await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
-        }
-
-        await client.SendAsync(mimeMessage, cancellationToken);
-        await client.DisconnectAsync(true, cancellationToken);
+            await client.SendAsync(mimeMessage, cancellationToken);
+            await client.DisconnectAsync(true, cancellationToken);
+        }, cancellationToken: cancellationToken);
     }
 }

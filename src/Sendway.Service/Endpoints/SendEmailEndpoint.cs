@@ -5,6 +5,16 @@ namespace Sendway.Service.Endpoints;
 
 public static class SendEmailEndpoint
 {
+    // Bounds request size before it reaches SmtpEmailSender — protects the process from an
+    // oversized payload rather than validating email formatting (SmtpEmailSender/InvalidRecipientException
+    // already own that). Subject matches the common 200-char convention for email subject lines;
+    // To follows RFC 5321's 320-character maximum address length; Body is generous for a
+    // transactional plain-text message while still being a bounded number, not "however much fits
+    // in the request body."
+    private const int MaxToLength = 320;
+    private const int MaxSubjectLength = 200;
+    private const int MaxBodyLength = 1_000_000;
+
     public static void MapSendEmailEndpoint(this IEndpointRouteBuilder group)
     {
         group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IEmailSender sender, IMessageStatusStore statusStore, CancellationToken cancellationToken) =>
@@ -14,6 +24,21 @@ public static class SendEmailEndpoint
                 string.IsNullOrWhiteSpace(request.Body))
             {
                 return Results.BadRequest(new { error = "to, subject, body는 모두 필수입니다." });
+            }
+
+            if (request.To.Length > MaxToLength)
+            {
+                return Results.BadRequest(new { error = $"to는 {MaxToLength}자를 초과할 수 없습니다." });
+            }
+
+            if (request.Subject.Length > MaxSubjectLength)
+            {
+                return Results.BadRequest(new { error = $"subject는 {MaxSubjectLength}자를 초과할 수 없습니다." });
+            }
+
+            if (request.Body.Length > MaxBodyLength)
+            {
+                return Results.BadRequest(new { error = $"body는 {MaxBodyLength}자를 초과할 수 없습니다." });
             }
 
             var tenant = httpContext.GetTenant();

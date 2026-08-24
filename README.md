@@ -25,14 +25,19 @@
 docker build -f src/Sendway.Service/Dockerfile -t sendway-service .
 docker run -p 8080:8080 \
   -v sendway-data:/data \
+  -e Sendway__DatabaseProvider=Sqlite \
+  -e ConnectionStrings__Sendway="Data Source=/data/sendway.db" \
   -e Smtp__Provider=Gmail \
   -e Smtp__Username=... -e Smtp__Password=... -e Smtp__FromAddress=... \
   sendway-service
 ```
 
-채널 자격증명(암호화됨)과 발송 상태는 `/data`에 저장됩니다. 이 볼륨을 마운트하지 않으면 컨테이너를
-새로 만들 때마다 초기화됩니다(재기동 시 위 환경변수 값으로 자동 재시드되므로 서비스 자체는 계속
-동작하지만, 그 사이의 발송 이력 조회 결과는 사라집니다).
+위 예시는 별도 데이터베이스 없이 로컬에서 바로 띄워보기 위한 SQLite 옵션입니다 — SQLite는 파일이
+네트워크 마운트 볼륨(클라우드 스토리지 등)에 있으면 안정적으로 동작하지 않으므로, 실제 배포에서는
+`ConnectionStrings__Sendway`에 PostgreSQL 연결 문자열을 넣고 `Sendway__DatabaseProvider`는 생략(기본값이
+PostgreSQL)합니다. 채널 자격증명(암호화됨)과 Data Protection 키 링은 `/data`에 저장됩니다 — 이 볼륨을
+마운트하지 않으면 컨테이너를 새로 만들 때마다 초기화됩니다(재기동 시 위 환경변수 값으로 자동
+재시드되므로 서비스 자체는 계속 동작하지만, 그 사이의 발송 이력 조회 결과는 사라집니다).
 
 ## 개발
 

@@ -19,52 +19,55 @@ public sealed class FcmPushSender : IPushSender
         _credentialStore = credentialStore;
     }
 
-    public async Task SendAsync(PushMessage message, CancellationToken cancellationToken = default)
+    public Task SendAsync(PushMessage message, CancellationToken cancellationToken = default)
     {
-        var lazyApp = _apps.GetOrAdd(
-            message.TenantId,
-            tenantId => new Lazy<Task<FirebaseApp>>(
-                () => CreateAppAsync(tenantId, _credentialStore),
-                LazyThreadSafetyMode.ExecutionAndPublication));
+        return RetryPolicy.ExecuteAsync(async () =>
+        {
+            var lazyApp = _apps.GetOrAdd(
+                message.TenantId,
+                tenantId => new Lazy<Task<FirebaseApp>>(
+                    () => CreateAppAsync(tenantId, _credentialStore),
+                    LazyThreadSafetyMode.ExecutionAndPublication));
 
-        FirebaseApp app;
-        try
-        {
-            app = await lazyApp.Value;
-        }
-        catch
-        {
-            // A faulted creation (e.g. missing/invalid FCM credential) must not stay cached
-            // forever — remove it so the next send retries instead of rethrowing the same stale
-            // failure until process restart. Remove only the exact entry we saw fail, in case a
-            // concurrent caller already replaced it (e.g. via InvalidateTenant below).
-            _apps.TryRemove(new KeyValuePair<Guid, Lazy<Task<FirebaseApp>>>(message.TenantId, lazyApp));
-            throw;
-        }
-
-        var fcmMessage = new Message
-        {
-            // Message.Token: FCM이 fid로 전환 중이나(2026-06~), token은 마이그레이션 기간 동안
-            // 계속 동작하고 하위호환됨. 대부분의 실제 클라이언트가 아직 fid가 아닌 registration
-            // token을 발급받으므로, 실제 검증 없이 지금 Fid로 옮기지 않음.
-#pragma warning disable CS0618
-            Token = message.DeviceToken,
-#pragma warning restore CS0618
-            Notification = new Notification
+            FirebaseApp app;
+            try
             {
-                Title = message.Title,
-                Body = message.Body
+                app = await lazyApp.Value;
             }
-        };
+            catch
+            {
+                // A faulted creation (e.g. missing/invalid FCM credential) must not stay cached
+                // forever — remove it so the next send retries instead of rethrowing the same stale
+                // failure until process restart. Remove only the exact entry we saw fail, in case a
+                // concurrent caller already replaced it (e.g. via InvalidateTenant below).
+                _apps.TryRemove(new KeyValuePair<Guid, Lazy<Task<FirebaseApp>>>(message.TenantId, lazyApp));
+                throw;
+            }
 
-        try
-        {
-            await FirebaseMessaging.GetMessaging(app).SendAsync(fcmMessage, cancellationToken);
-        }
-        catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode is MessagingErrorCode.Unregistered or MessagingErrorCode.InvalidArgument)
-        {
-            throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
-        }
+            var fcmMessage = new Message
+            {
+                // Message.Token: FCM이 fid로 전환 중이나(2026-06~), token은 마이그레이션 기간 동안
+                // 계속 동작하고 하위호환됨. 대부분의 실제 클라이언트가 아직 fid가 아닌 registration
+                // token을 발급받으므로, 실제 검증 없이 지금 Fid로 옮기지 않음.
+#pragma warning disable CS0618
+                Token = message.DeviceToken,
+#pragma warning restore CS0618
+                Notification = new Notification
+                {
+                    Title = message.Title,
+                    Body = message.Body
+                }
+            };
+
+            try
+            {
+                await FirebaseMessaging.GetMessaging(app).SendAsync(fcmMessage, cancellationToken);
+            }
+            catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode is MessagingErrorCode.Unregistered or MessagingErrorCode.InvalidArgument)
+            {
+                throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
+            }
+        }, cancellationToken: cancellationToken);
     }
 
     // Task 5(SetTenantCredentialEndpoint)가 이 테넌트의 FCM 자격증명을 새로 등록/교체한 뒤 호출한다

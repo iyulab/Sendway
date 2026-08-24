@@ -48,11 +48,16 @@ builder.Services.AddSingleton<IMessageStatusStore, MessageStatusStore>();
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 
+builder.Services.AddMemoryCache();
+
 builder.Services.AddHostedService<ChannelCredentialSeeder>();
 
 var app = builder.Build();
 
-var messages = app.MapGroup("/messages").AddEndpointFilter<TenantAuthFilter>();
+var messages = app.MapGroup("/messages")
+    .AddEndpointFilter<TenantAuthFilter>()
+    .AddEndpointFilter<IdempotencyFilter>()
+    .AddEndpointFilter<TenantRateLimitFilter>();
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapGetMessageStatusEndpoint();
