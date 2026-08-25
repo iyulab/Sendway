@@ -1,5 +1,16 @@
 # Migrations adoption — one-time production cutover (human-executed, not automated)
 
+## Status
+
+**Done (2026-08-25)**: steps 1–3 below are complete. The live `sendway-pg` schema was diffed against
+`InitialCreate.cs` (exact match — 3 tables, same columns/PK/unique index), `__EFMigrationsHistory` was
+created and seeded with `20260824143840_InitialCreate`/`8.0.11`, and `ChannelCredentialSeeder.StartAsync`
+now branches on `Sendway:DatabaseProvider` (`Sqlite` → `EnsureCreatedAsync`, everything else →
+`MigrateAsync`) so the Npgsql-generated migration never runs against the Sqlite test provider.
+**Not yet in production** — this code change is a local commit only; it takes effect on the next deploy
+(tracked with the pending `origin` push, see `claudedocs/HANDOFF.md`). Until that deploy, the running
+service still calls `EnsureCreatedAsync()`, which is a safe no-op against the now-marked-baseline schema.
+
 ## What this is
 
 `InitialCreate` (`20260824143840_InitialCreate.cs`) is a **baseline** migration generated from the

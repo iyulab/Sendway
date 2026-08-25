@@ -31,7 +31,14 @@ public sealed class ChannelCredentialSeeder : IHostedService
     {
         await using (var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
         {
-            await db.Database.EnsureCreatedAsync(cancellationToken);
+            if (_configuration["Sendway:DatabaseProvider"] == "Sqlite")
+            {
+                await db.Database.EnsureCreatedAsync(cancellationToken);
+            }
+            else
+            {
+                await db.Database.MigrateAsync(cancellationToken);
+            }
         }
 
         var smtp = _configuration.GetSection("Smtp").Get<SmtpOptions>();
