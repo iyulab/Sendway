@@ -46,7 +46,7 @@ public class IdempotencyFilterTests : IClassFixture<WebApplicationFactory<Progra
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/messages/email")
         {
-            Content = JsonContent.Create(new SendEmailRequest("user@example.com", "Subject", "Body"))
+            Content = JsonContent.Create(new SendEmailRequest(["user@example.com"], "Subject", "Body"))
         };
         if (idempotencyKey is not null)
         {

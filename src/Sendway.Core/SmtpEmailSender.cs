@@ -15,20 +15,14 @@ public sealed class SmtpEmailSender : IEmailSender
 
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
-        // MailboxAddress.TryParse alone accepts a bare local-part with no "@" (e.g. "plainaddress")
-        // as a valid mailbox — too lenient for rejecting a malformed address, so the "@" is checked
-        // explicitly on top of it.
-        if (!MailboxAddress.TryParse(message.To, out var to) || !to.Address.Contains('@'))
-        {
-            throw new InvalidRecipientException($"'{message.To}' is not a valid email address.");
-        }
-
         var options = await _credentialStore.GetAsync<SmtpOptions>(message.TenantId, ChannelCredentialNames.Smtp, cancellationToken)
             ?? throw new InvalidOperationException("Smtp channel credentials have not been configured.");
 
         var mimeMessage = new MimeMessage();
         mimeMessage.From.Add(MailboxAddress.Parse(options.FromAddress));
-        mimeMessage.To.Add(to);
+        AddRecipients(mimeMessage.To, message.To);
+        AddRecipients(mimeMessage.Cc, message.Cc);
+        AddRecipients(mimeMessage.Bcc, message.Bcc);
         mimeMessage.Subject = message.Subject;
         mimeMessage.Body = new TextPart("plain") { Text = message.Body };
 
@@ -54,5 +48,21 @@ public sealed class SmtpEmailSender : IEmailSender
             await client.SendAsync(mimeMessage, cancellationToken);
             await client.DisconnectAsync(true, cancellationToken);
         }, cancellationToken: cancellationToken);
+    }
+
+    private static void AddRecipients(InternetAddressList destination, IReadOnlyList<string> addresses)
+    {
+        foreach (var address in addresses)
+        {
+            // MailboxAddress.TryParse alone accepts a bare local-part with no "@" (e.g. "plainaddress")
+            // as a valid mailbox — too lenient for rejecting a malformed address, so the "@" is checked
+            // explicitly on top of it.
+            if (!MailboxAddress.TryParse(address, out var mailbox) || !mailbox.Address.Contains('@'))
+            {
+                throw new InvalidRecipientException($"'{address}' is not a valid email address.");
+            }
+
+            destination.Add(mailbox);
+        }
     }
 }

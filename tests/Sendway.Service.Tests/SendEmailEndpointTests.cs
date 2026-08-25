@@ -51,13 +51,15 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Post_WithValidRequest_Returns200()
     {
         var client = CreateAuthenticatedClient();
-        var request = new SendEmailRequest("user@example.com", "Distinct Subject", "Distinct Body");
+        var request = new SendEmailRequest(["user@example.com"], "Distinct Subject", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(_fakeEmailSender.LastMessage);
-        Assert.Equal("user@example.com", _fakeEmailSender.LastMessage!.To);
+        Assert.Equal(["user@example.com"], _fakeEmailSender.LastMessage!.To);
+        Assert.Empty(_fakeEmailSender.LastMessage!.Cc);
+        Assert.Empty(_fakeEmailSender.LastMessage!.Bcc);
         Assert.Equal("Distinct Subject", _fakeEmailSender.LastMessage!.Subject);
         Assert.Equal("Distinct Body", _fakeEmailSender.LastMessage!.Body);
 
@@ -67,10 +69,30 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithMultipleToCcBcc_SendsAllRecipients()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(
+            To: ["to1@example.com", "to2@example.com"],
+            Subject: "Subject",
+            Body: "Body",
+            Cc: ["cc1@example.com"],
+            Bcc: ["bcc1@example.com", "bcc2@example.com"]);
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(_fakeEmailSender.LastMessage);
+        Assert.Equal(["to1@example.com", "to2@example.com"], _fakeEmailSender.LastMessage!.To);
+        Assert.Equal(["cc1@example.com"], _fakeEmailSender.LastMessage!.Cc);
+        Assert.Equal(["bcc1@example.com", "bcc2@example.com"], _fakeEmailSender.LastMessage!.Bcc);
+    }
+
+    [Fact]
     public async Task Post_WithoutApiKey_Returns401()
     {
         var client = _factory.CreateClient();
-        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
@@ -82,7 +104,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Api-Key", "sw_not-a-real-key");
-        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
@@ -93,7 +115,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Post_WithValidRequest_StatusIsQueryableAfterward()
     {
         var client = CreateAuthenticatedClient();
-        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
         var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
@@ -109,6 +131,26 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithMultipleRecipients_StatusRecipientSummarizesToCcBcc()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(
+            To: ["to1@example.com", "to2@example.com"],
+            Subject: "Subject",
+            Body: "Body",
+            Cc: ["cc1@example.com"],
+            Bcc: ["bcc1@example.com"]);
+
+        var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
+        var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
+
+        var statusResponse = await client.GetAsync($"/messages/{sendBody!.Id}");
+        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+
+        Assert.Equal("to1@example.com, to2@example.com; cc: cc1@example.com; bcc: bcc1@example.com", status!.Recipient);
+    }
+
+    [Fact]
     public async Task Post_WithMissingTo_Returns400()
     {
         var client = CreateAuthenticatedClient();
@@ -120,10 +162,48 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithEmptyToList_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest([], "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_WithBlankAddressInCc_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", Cc: [" "]);
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage);
+    }
+
+    [Fact]
+    public async Task Post_WithTooManyRecipients_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(
+            To: Enumerable.Range(0, 1001).Select(i => $"to{i}@example.com").ToList(),
+            Subject: "Subject",
+            Body: "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage);
+    }
+
+    [Fact]
     public async Task Post_WithOversizedSubject_Returns400()
     {
         var client = CreateAuthenticatedClient();
-        var request = new SendEmailRequest("user@example.com", new string('s', 201), "Body");
+        var request = new SendEmailRequest(["user@example.com"], new string('s', 201), "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
@@ -135,7 +215,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Post_WithOversizedBody_Returns400()
     {
         var client = CreateAuthenticatedClient();
-        var request = new SendEmailRequest("user@example.com", "Subject", new string('b', 1_000_001));
+        var request = new SendEmailRequest(["user@example.com"], "Subject", new string('b', 1_000_001));
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
@@ -155,7 +235,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             });
         });
         var client = CreateAuthenticatedClient(factory);
-        var request = new SendEmailRequest("not-an-email-address", "Subject", "Body");
+        var request = new SendEmailRequest(["not-an-email-address"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
         var body = await response.Content.ReadFromJsonAsync<SendMessageFailureResponse>();
@@ -183,7 +263,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             });
         });
         var client = CreateAuthenticatedClient(factory);
-        var request = new SendEmailRequest("user@example.com", "Subject", "Body");
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
@@ -204,7 +284,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Get_MessageBelongingToAnotherTenant_Returns404()
     {
         var client = CreateAuthenticatedClient();
-        var sendResponse = await client.PostAsJsonAsync("/messages/email", new SendEmailRequest("user@example.com", "Subject", "Body"));
+        var sendResponse = await client.PostAsJsonAsync("/messages/email", new SendEmailRequest(["user@example.com"], "Subject", "Body"));
         var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
 
         var (_, otherApiKey) = await TestTenantSeeder.SeedAsync(_factory, "other-tenant");

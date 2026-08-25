@@ -52,7 +52,7 @@ public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Pr
     }
 
     private static Task<HttpResponseMessage> SendAsync(HttpClient client) =>
-        client.PostAsJsonAsync("/messages/email", new SendEmailRequest("user@example.com", "Subject", "Body"));
+        client.PostAsJsonAsync("/messages/email", new SendEmailRequest(["user@example.com"], "Subject", "Body"));
 
     [Fact]
     public async Task Post_ExceedsConfiguredLimit_Returns429WithRetryAfter()

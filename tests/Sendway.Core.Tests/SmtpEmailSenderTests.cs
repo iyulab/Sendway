@@ -16,7 +16,7 @@ public class SmtpEmailSenderTests
             FromAddress = "sendway@localhost"
         });
         var sender = new SmtpEmailSender(credentialStore);
-        var message = new EmailMessage(Guid.NewGuid(), "recipient@localhost", "L0 test", "walking skeleton");
+        var message = new EmailMessage(Guid.NewGuid(), ["recipient@localhost"], "L0 test", "walking skeleton");
 
         await sender.SendAsync(message);
     }
