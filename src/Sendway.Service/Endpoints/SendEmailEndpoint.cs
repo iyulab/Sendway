@@ -10,7 +10,10 @@ public static class SendEmailEndpoint
     // already own that). MaxAddressLength follows RFC 5321's 320-character maximum address length and
     // applies to every individual address across to/cc/bcc. Subject matches the common 200-char
     // convention for email subject lines; Body is generous for a transactional plain-text message
-    // while still being a bounded number, not "however much fits in the request body."
+    // while still being a bounded number, not "however much fits in the request body." MaxBodyLength
+    // also bounds the optional htmlBody — reusing it rather than adding a second arbitrary number,
+    // since both exist for the same reason (process protection) and no cross-provider convention
+    // exists for an HTML-body-specific limit the way one does for MaxRecipientsPerMessage below.
     // MaxRecipientsPerMessage (to+cc+bcc combined) matches the limit SendGrid and Mailgun both
     // converge on for a single send call — an anti-spam-vector bound, not a throughput target.
     private const int MaxAddressLength = 320;
@@ -61,12 +64,24 @@ public static class SendEmailEndpoint
                 return Results.BadRequest(new { error = $"body는 {MaxBodyLength}자를 초과할 수 없습니다." });
             }
 
+            // Blank htmlBody is treated as "not provided" rather than a validation error — it's an
+            // optional decorative addition on top of the required plain-text body, not a field whose
+            // absence should surprise the caller. Bounded by the same MaxBodyLength as the plain body:
+            // both exist to protect the process from an oversized payload, and a distinct number here
+            // wouldn't be backed by any real signal (no cross-provider convention for an HTML-body-only
+            // limit, unlike MaxRecipientsPerMessage below).
+            var htmlBody = string.IsNullOrWhiteSpace(request.HtmlBody) ? null : request.HtmlBody;
+            if (htmlBody is not null && htmlBody.Length > MaxBodyLength)
+            {
+                return Results.BadRequest(new { error = $"htmlBody는 {MaxBodyLength}자를 초과할 수 없습니다." });
+            }
+
             var tenant = httpContext.GetTenant();
             var recipientSummary = BuildRecipientSummary(request.To, cc, bcc);
 
             try
             {
-                var message = new EmailMessage(tenant.Id, request.To, request.Subject, request.Body, cc, bcc);
+                var message = new EmailMessage(tenant.Id, request.To, request.Subject, request.Body, cc, bcc, htmlBody);
                 await sender.SendAsync(message, cancellationToken);
                 // statusStore writes intentionally use no cancellation token — the outcome should be
                 // durably recorded even if the caller disconnected before the response could be sent.

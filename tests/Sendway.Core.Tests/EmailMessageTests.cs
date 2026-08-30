@@ -19,6 +19,20 @@ public class EmailMessageTests
         Assert.Empty(message.Bcc);
         Assert.Equal("Subject", message.Subject);
         Assert.Equal("Body", message.Body);
+        Assert.Null(message.HtmlBody);
+    }
+
+    [Fact]
+    public void Constructor_WithHtmlBody_SetsProperty()
+    {
+        var message = new EmailMessage(
+            Guid.NewGuid(),
+            ["user@example.com"],
+            "Subject",
+            "Body",
+            htmlBody: "<p>Body</p>");
+
+        Assert.Equal("<p>Body</p>", message.HtmlBody);
     }
 
     [Fact]

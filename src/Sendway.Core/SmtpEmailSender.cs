@@ -24,7 +24,7 @@ public sealed class SmtpEmailSender : IEmailSender
         AddRecipients(mimeMessage.Cc, message.Cc);
         AddRecipients(mimeMessage.Bcc, message.Bcc);
         mimeMessage.Subject = message.Subject;
-        mimeMessage.Body = new TextPart("plain") { Text = message.Body };
+        mimeMessage.Body = BuildBody(message.Body, message.HtmlBody);
 
         var (host, port) = SmtpProviderPresets.Resolve(options);
 
@@ -48,6 +48,21 @@ public sealed class SmtpEmailSender : IEmailSender
             await client.SendAsync(mimeMessage, cancellationToken);
             await client.DisconnectAsync(true, cancellationToken);
         }, cancellationToken: cancellationToken);
+    }
+
+    // htmlBody absent → single plain-text part, byte-identical to pre-HTML-support wire format.
+    // htmlBody present → multipart/alternative with plain-text kept as the mandatory fallback part,
+    // per RFC 2046 (mail clients that can't render HTML fall back to it).
+    internal static MimeEntity BuildBody(string body, string? htmlBody)
+    {
+        var builder = new BodyBuilder { TextBody = body };
+
+        if (!string.IsNullOrEmpty(htmlBody))
+        {
+            builder.HtmlBody = htmlBody;
+        }
+
+        return builder.ToMessageBody();
     }
 
     private static void AddRecipients(InternetAddressList destination, IReadOnlyList<string> addresses)

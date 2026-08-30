@@ -8,6 +8,7 @@ public sealed class EmailMessage
     public IReadOnlyList<string> Bcc { get; }
     public string Subject { get; }
     public string Body { get; }
+    public string? HtmlBody { get; }
 
     public EmailMessage(
         Guid tenantId,
@@ -15,7 +16,8 @@ public sealed class EmailMessage
         string subject,
         string body,
         IReadOnlyList<string>? cc = null,
-        IReadOnlyList<string>? bcc = null)
+        IReadOnlyList<string>? bcc = null,
+        string? htmlBody = null)
     {
         if (to is null || to.Count == 0)
         {
@@ -36,5 +38,6 @@ public sealed class EmailMessage
         Bcc = bcc ?? [];
         Subject = subject;
         Body = body;
+        HtmlBody = htmlBody;
     }
 }

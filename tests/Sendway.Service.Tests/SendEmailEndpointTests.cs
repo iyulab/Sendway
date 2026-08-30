@@ -89,6 +89,54 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WithHtmlBody_PassesHtmlBodyToSender()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", HtmlBody: "<p>Body</p>");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("<p>Body</p>", _fakeEmailSender.LastMessage!.HtmlBody);
+    }
+
+    [Fact]
+    public async Task Post_WithoutHtmlBody_HtmlBodyIsNull()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage!.HtmlBody);
+    }
+
+    [Fact]
+    public async Task Post_WithBlankHtmlBody_TreatsAsAbsent()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", HtmlBody: "   ");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage!.HtmlBody);
+    }
+
+    [Fact]
+    public async Task Post_WithOversizedHtmlBody_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", HtmlBody: new string('h', 1_000_001));
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_fakeEmailSender.LastMessage);
+    }
+
+    [Fact]
     public async Task Post_WithoutApiKey_Returns401()
     {
         var client = _factory.CreateClient();
