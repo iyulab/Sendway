@@ -88,6 +88,35 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
     }
 
     [Fact]
+    public async Task SetCredential_EmailGraphChannel_PersistsOverrideAndCallsInvalidation()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        // Fake, never-valid credentials — exercises the endpoint's persistence + InvalidateTenant
+        // call path, not GraphEmailSender's actual token acquisition (no live Azure AD app available
+        // to this test suite).
+        var overridePayload = new GraphOptions
+        {
+            DirectoryId = "00000000-0000-0000-0000-000000000000",
+            ClientId = "00000000-0000-0000-0000-000000000000",
+            ClientSecret = "not-a-real-secret",
+            FromAddress = "authway@example.com"
+        };
+        var putResponse = await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/email-graph", overridePayload);
+        Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
+
+        var credentialStore = _factory.Services.GetRequiredService<ICredentialStore>();
+        var resolved = await credentialStore.GetAsync<GraphOptions>(created.TenantId, ChannelCredentialNames.EmailGraph);
+
+        Assert.NotNull(resolved);
+        Assert.Equal("authway@example.com", resolved!.FromAddress);
+    }
+
+    [Fact]
     public async Task SetCredential_UnknownTenant_Returns404()
     {
         var adminClient = _factory.CreateClient();

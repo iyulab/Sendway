@@ -12,7 +12,7 @@
 
 **이메일**과 **앱 푸시** 두 채널이 있습니다.
 
-- 이메일: SMTP로 직접 발송합니다([MailKit](https://github.com/jstedfast/MailKit) 사용). 발신 서버는 Gmail/Office365 프리셋이나 직접 지정한 호스트를 씁니다.
+- 이메일: 기본은 SMTP로 직접 발송합니다([MailKit](https://github.com/jstedfast/MailKit) 사용). 발신 서버는 Gmail/Office365 프리셋이나 직접 지정한 호스트를 씁니다. 테넌트가 `email-graph` 채널 자격증명(Azure AD 앱의 Directory/Client ID·Client Secret·발신 주소, [Microsoft Graph](https://github.com/microsoftgraph/msgraph-sdk-dotnet)의 `Mail.Send` application permission 사용)을 등록하면 그 테넌트의 발송만 SMTP 대신 Graph API로 라우팅됩니다 — SMTP AUTH를 지원하지 않는 M365 사서함을 발신자로 쓰기 위한 경로입니다. Graph 경로는 SMTP의 `multipart/alternative`(plain-text 항상 fallback으로 동봉)와 달리 `htmlBody`가 있으면 HTML만, 없으면 plain-text만 담아 보냅니다 — Graph의 `sendMail`이 본문 하나에 콘텐츠 타입 하나만 허용하기 때문입니다.
 - 앱 푸시: Firebase Cloud Messaging으로 발송합니다([FirebaseAdmin](https://github.com/firebase/firebase-admin-dotnet) 사용). APNs(iOS 직접 연동)는 아직 없습니다.
 
 새 채널은 공통 인터페이스를 구현하는 어댑터를 추가하는 방식으로 확장합니다.

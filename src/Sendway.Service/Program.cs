@@ -45,7 +45,11 @@ builder.Services.AddSingleton<ITenantStore, TenantStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMessageStatusStore, MessageStatusStore>();
 
-builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddSingleton<GraphEmailSender>();
+builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.Smtp, (sp, _) => sp.GetRequiredService<SmtpEmailSender>());
+builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.EmailGraph, (sp, _) => sp.GetRequiredService<GraphEmailSender>());
+builder.Services.AddSingleton<IEmailSender, EmailSenderRouter>();
 builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 
 builder.Services.AddMemoryCache();

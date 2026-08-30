@@ -13,6 +13,7 @@ public static class SetTenantCredentialEndpoint
             ITenantStore tenantStore,
             ICredentialStore credentialStore,
             IPushSender pushSender,
+            GraphEmailSender graphEmailSender,
             CancellationToken cancellationToken) =>
         {
             var tenant = await tenantStore.GetByIdAsync(id, cancellationToken);
@@ -32,6 +33,20 @@ public static class SetTenantCredentialEndpoint
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Smtp, options, cancellationToken);
+                    return Results.NoContent();
+                }
+                case ChannelCredentialNames.EmailGraph:
+                {
+                    var options = await request.ReadFromJsonAsync<GraphOptions>(cancellationToken);
+                    if (options is null)
+                    {
+                        return Results.BadRequest(new { error = "invalid email-graph credential payload" });
+                    }
+
+                    await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.EmailGraph, options, cancellationToken);
+                    // GraphEmailSender caches one GraphServiceClient per tenant for the process
+                    // lifetime — same reason FcmPushSender needs InvalidateTenant below.
+                    graphEmailSender.InvalidateTenant(tenant.Id);
                     return Results.NoContent();
                 }
                 case ChannelCredentialNames.Fcm:
