@@ -48,14 +48,7 @@ public sealed class GraphEmailSender : IEmailSender
             // same "no partial send" guarantee SmtpEmailSender gives, and avoids having to guess at
             // Graph's own error-code taxonomy for malformed recipients without a live tenant to
             // verify it against.
-            var graphMessage = new Message
-            {
-                Subject = message.Subject,
-                Body = BuildBody(message.Body, message.HtmlBody),
-                ToRecipients = ToRecipients(message.To),
-                CcRecipients = ToRecipients(message.Cc),
-                BccRecipients = ToRecipients(message.Bcc)
-            };
+            var graphMessage = BuildGraphMessage(message);
 
             await tenantClient.Client.Users[tenantClient.FromAddress].SendMail.PostAsync(
                 new SendMailPostRequestBody { Message = graphMessage, SaveToSentItems = false },
@@ -71,6 +64,33 @@ public sealed class GraphEmailSender : IEmailSender
         _clients.TryRemove(tenantId, out _);
     }
 
+    // Cc/Bcc are only assigned when non-empty. Graph's OData layer rejects an explicit JSON null
+    // for these collection properties ("cannot be null but it can have null values") — assigning a
+    // C# null here (as the empty-Cc/Bcc case used to) makes Kiota's backing store serialize that
+    // explicit null and the send fails. Leaving the property untouched keeps it out of the
+    // serialized body entirely.
+    internal static Message BuildGraphMessage(EmailMessage message)
+    {
+        var graphMessage = new Message
+        {
+            Subject = message.Subject,
+            Body = BuildBody(message.Body, message.HtmlBody),
+            ToRecipients = ToRecipients(message.To)
+        };
+
+        if (message.Cc.Count > 0)
+        {
+            graphMessage.CcRecipients = ToRecipients(message.Cc);
+        }
+
+        if (message.Bcc.Count > 0)
+        {
+            graphMessage.BccRecipients = ToRecipients(message.Bcc);
+        }
+
+        return graphMessage;
+    }
+
     // Graph's sendMail body carries exactly one ContentType (Text or Html) — unlike SMTP's
     // multipart/alternative, there is no built-in plain-text fallback part alongside HTML.
     private static ItemBody BuildBody(string body, string? htmlBody)
@@ -80,13 +100,10 @@ public sealed class GraphEmailSender : IEmailSender
             : new ItemBody { ContentType = BodyType.Text, Content = body };
     }
 
-    private static List<Recipient>? ToRecipients(IReadOnlyList<string> addresses)
+    // Callers only pass non-empty lists (To is guaranteed non-empty by EmailMessage; Cc/Bcc are
+    // only passed through when SendAsync has already checked Count > 0).
+    private static List<Recipient> ToRecipients(IReadOnlyList<string> addresses)
     {
-        if (addresses.Count == 0)
-        {
-            return null;
-        }
-
         var recipients = new List<Recipient>(addresses.Count);
         foreach (var address in addresses)
         {

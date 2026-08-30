@@ -300,7 +300,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task Post_WhenSenderThrows_Returns502()
+    public async Task Post_WhenSenderThrows_Returns500()
     {
         var factory = _factory.WithWebHostBuilder(builder =>
         {
@@ -315,7 +315,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
-        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
     }
 
     [Fact]

@@ -23,7 +23,7 @@ public static class SendEmailEndpoint
 
     public static void MapSendEmailEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IEmailSender sender, IMessageStatusStore statusStore, CancellationToken cancellationToken) =>
+        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IEmailSender sender, IMessageStatusStore statusStore, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
         {
             if (request.To is null || request.To.Count == 0 ||
                 string.IsNullOrWhiteSpace(request.Subject) ||
@@ -95,10 +95,12 @@ public static class SendEmailEndpoint
             }
             catch (Exception ex) when (ex is not ArgumentException)
             {
+                loggerFactory.CreateLogger(typeof(SendEmailEndpoint).FullName!)
+                    .LogError(ex, "Email send failed for tenant {TenantId}", tenant.Id);
                 var id = await statusStore.RecordAsync(tenant.Id, "email", recipientSummary, MessageDeliveryStatus.Failed, ex.Message);
                 return Results.Problem(
                     detail: ex.Message,
-                    statusCode: StatusCodes.Status502BadGateway,
+                    statusCode: StatusCodes.Status500InternalServerError,
                     extensions: new Dictionary<string, object?> { ["messageId"] = id });
             }
         });

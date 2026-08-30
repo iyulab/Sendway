@@ -63,6 +63,20 @@ public sealed class EncryptedCredentialStore : ICredentialStore
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task DeleteAsync(Guid tenantId, string channel, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var record = await db.ChannelCredentials
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Channel == channel, cancellationToken);
+
+        if (record is not null)
+        {
+            db.ChannelCredentials.Remove(record);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private T? Deserialize<T>(string encryptedPayload) where T : class
     {
         var json = _protector.Unprotect(encryptedPayload);

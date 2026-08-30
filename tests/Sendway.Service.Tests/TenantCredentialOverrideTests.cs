@@ -117,6 +117,82 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
     }
 
     [Fact]
+    public async Task DeleteCredential_TenantWithOverride_RevertsToSharedDefault()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var overridePayload = new SmtpOptions { Host = "authway-only.example.com", FromAddress = "authway@example.com" };
+        await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/smtp", overridePayload);
+
+        var deleteResponse = await adminClient.DeleteAsync($"/admin/tenants/{created.TenantId}/credentials/smtp");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var credentialStore = _factory.Services.GetRequiredService<ICredentialStore>();
+        var resolvedForTenant = await credentialStore.GetAsync<SmtpOptions>(created.TenantId, ChannelCredentialNames.Smtp);
+
+        // No shared default is seeded in this test environment (see the class-level comment on
+        // "Testing" environment above) — so once the override is gone, resolution falls all the
+        // way through to null rather than resurrecting a value the tenant never had.
+        Assert.Null(resolvedForTenant);
+    }
+
+    [Fact]
+    public async Task DeleteCredential_EmailGraphChannel_InvalidatesCachedClient()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var overridePayload = new GraphOptions
+        {
+            DirectoryId = "00000000-0000-0000-0000-000000000000",
+            ClientId = "00000000-0000-0000-0000-000000000000",
+            ClientSecret = "not-a-real-secret",
+            FromAddress = "authway@example.com"
+        };
+        await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/email-graph", overridePayload);
+
+        var deleteResponse = await adminClient.DeleteAsync($"/admin/tenants/{created.TenantId}/credentials/email-graph");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var credentialStore = _factory.Services.GetRequiredService<ICredentialStore>();
+        var resolved = await credentialStore.GetAsync<GraphOptions>(created.TenantId, ChannelCredentialNames.EmailGraph);
+
+        Assert.Null(resolved);
+    }
+
+    [Fact]
+    public async Task DeleteCredential_UnknownTenant_Returns404()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+
+        var response = await adminClient.DeleteAsync($"/admin/tenants/{Guid.NewGuid()}/credentials/smtp");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteCredential_UnknownChannel_Returns400()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var response = await adminClient.DeleteAsync($"/admin/tenants/{created!.TenantId}/credentials/slack");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SetCredential_UnknownTenant_Returns404()
     {
         var adminClient = _factory.CreateClient();

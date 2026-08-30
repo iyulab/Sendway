@@ -15,7 +15,7 @@ public static class SendPushEndpoint
 
     public static void MapSendPushEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapPost("/push", async (SendPushRequest request, HttpContext httpContext, IPushSender sender, IMessageStatusStore statusStore, CancellationToken cancellationToken) =>
+        group.MapPost("/push", async (SendPushRequest request, HttpContext httpContext, IPushSender sender, IMessageStatusStore statusStore, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.DeviceToken) ||
                 string.IsNullOrWhiteSpace(request.Title) ||
@@ -57,10 +57,12 @@ public static class SendPushEndpoint
             }
             catch (Exception ex) when (ex is not ArgumentException)
             {
+                loggerFactory.CreateLogger(typeof(SendPushEndpoint).FullName!)
+                    .LogError(ex, "Push send failed for tenant {TenantId}", tenant.Id);
                 var id = await statusStore.RecordAsync(tenant.Id, "push", request.DeviceToken, MessageDeliveryStatus.Failed, ex.Message);
                 return Results.Problem(
                     detail: ex.Message,
-                    statusCode: StatusCodes.Status502BadGateway,
+                    statusCode: StatusCodes.Status500InternalServerError,
                     extensions: new Dictionary<string, object?> { ["messageId"] = id });
             }
         });

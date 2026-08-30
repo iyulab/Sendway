@@ -167,7 +167,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
     private sealed record SendFailureResponse(string? Error, Guid MessageId);
 
     [Fact]
-    public async Task Post_WhenSenderThrows_Returns502()
+    public async Task Post_WhenSenderThrows_Returns500()
     {
         var factory = _factory.WithWebHostBuilder(builder =>
         {
@@ -182,7 +182,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
 
-        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
     }
 
     private enum FailureMode

@@ -97,4 +97,56 @@ public class EncryptedCredentialStoreTests : IAsyncLifetime
         Assert.NotNull(result);
         Assert.Equal("shared.example.com", result!.Host);
     }
+
+    [Fact]
+    public async Task DeleteAsync_TenantOverrideExists_FallsBackToShared()
+    {
+        var tenantId = Guid.NewGuid();
+        await _store.SetAsync<SmtpOptions>(null, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "shared.example.com", FromAddress = "shared@example.com" });
+        await _store.SetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "tenant.example.com", FromAddress = "tenant@example.com" });
+
+        await _store.DeleteAsync(tenantId, ChannelCredentialNames.Smtp);
+        var result = await _store.GetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp);
+
+        Assert.NotNull(result);
+        Assert.Equal("shared.example.com", result!.Host);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_NoSharedDefault_ResultsInNull()
+    {
+        var tenantId = Guid.NewGuid();
+        await _store.SetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "tenant.example.com", FromAddress = "tenant@example.com" });
+
+        await _store.DeleteAsync(tenantId, ChannelCredentialNames.Smtp);
+        var result = await _store.GetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_NoRecordExists_IsANoOp()
+    {
+        var tenantId = Guid.NewGuid();
+
+        await _store.DeleteAsync(tenantId, ChannelCredentialNames.Smtp);
+        var result = await _store.GetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_OtherTenantHasOverride_LeavesItUntouched()
+    {
+        var tenantToDelete = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+        await _store.SetAsync<SmtpOptions>(tenantToDelete, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "delete-me.example.com", FromAddress = "a@example.com" });
+        await _store.SetAsync<SmtpOptions>(otherTenant, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "keep-me.example.com", FromAddress = "b@example.com" });
+
+        await _store.DeleteAsync(tenantToDelete, ChannelCredentialNames.Smtp);
+        var result = await _store.GetAsync<SmtpOptions>(otherTenant, ChannelCredentialNames.Smtp);
+
+        Assert.NotNull(result);
+        Assert.Equal("keep-me.example.com", result!.Host);
+    }
 }

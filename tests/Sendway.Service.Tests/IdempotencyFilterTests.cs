@@ -137,7 +137,7 @@ public class IdempotencyFilterTests : IClassFixture<WebApplicationFactory<Progra
         var first = await SendAsync(client, "retry-key");
         var second = await SendAsync(client, "retry-key");
 
-        Assert.Equal(HttpStatusCode.BadGateway, first.StatusCode);
+        Assert.Equal(HttpStatusCode.InternalServerError, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(2, sender.CallCount);
     }
