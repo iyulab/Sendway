@@ -8,7 +8,7 @@ public class QueueStatsTests : IAsyncLifetime
 {
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(1);
 
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private readonly ManualTimeProvider _time = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private MessageOutbox _messages = null!;
@@ -17,7 +17,7 @@ public class QueueStatsTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         _messages = new MessageOutbox(_database.Factory, dataProtection, _time, new WebhookDeliverySignal());

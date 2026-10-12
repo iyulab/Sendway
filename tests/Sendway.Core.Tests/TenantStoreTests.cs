@@ -5,12 +5,12 @@ namespace Sendway.Core.Tests;
 
 public class TenantStoreTests : IAsyncLifetime
 {
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private ITenantStore _store = null!;
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
         _store = new TenantStore(_database.Factory);
     }
 

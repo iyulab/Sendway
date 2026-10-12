@@ -116,7 +116,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(1);
     private static readonly Uri EndpointUrl = new("https://receiver.example.com/hooks");
 
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private readonly ManualTimeProvider _time = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly WebhookDeliveryOptions _options = new();
@@ -127,7 +127,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         var signal = new WebhookDeliverySignal();

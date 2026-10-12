@@ -76,6 +76,13 @@ dotnet test
 
 캐처 없이 실행하려면 `dotnet test --filter "Category!=Integration"`. CI는 push와 풀 리퀘스트마다 캐처를 함께 띄워 전체 테스트를 실행합니다.
 
+저장소 계층 테스트는 기본으로 SQLite 임시 파일을 씁니다. 실제 PostgreSQL에서 돌리려면 서버 연결 문자열을 환경변수로 줍니다(테스트가 임시 데이터베이스를 만들고 끝나면 지웁니다):
+
+```bash
+docker run -d --name sendway-test-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
+SENDWAY_TEST_POSTGRES="Host=localhost;Username=postgres;Password=postgres" dotnet test tests/Sendway.Core.Tests
+```
+
 ## 문서
 
 - [개요](docs/overview.md)

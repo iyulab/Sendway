@@ -8,7 +8,7 @@ namespace Sendway.Core.Tests;
 
 public class MessageDeliveryProcessorTests : IAsyncLifetime
 {
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private readonly ManualTimeProvider _time = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly MessageDeliveryOptions _options = new();
@@ -19,7 +19,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
         _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
         _processor = new MessageDeliveryProcessor(
             _outbox,

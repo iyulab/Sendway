@@ -9,14 +9,14 @@ public class MessageOutboxTests : IAsyncLifetime
 {
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(1);
 
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private readonly ManualTimeProvider _time = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private MessageOutbox _outbox = null!;
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
         _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
     }
 

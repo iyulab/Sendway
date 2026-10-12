@@ -8,14 +8,14 @@ namespace Sendway.Core.Tests;
 
 public class EncryptedCredentialStoreTests : IAsyncLifetime
 {
-    private readonly SqliteTempDatabase _database = new();
+    private readonly TestDatabase _database = new();
     private readonly string _dpKeyPath = Path.Combine(Path.GetTempPath(), "sendway-dp-tests-" + Guid.NewGuid().ToString("N"));
     private ServiceProvider _dataProtectionServices = null!;
     private ICredentialStore _store = null!;
 
     public async Task InitializeAsync()
     {
-        await _database.EnsureCreatedAsync();
+        await _database.CreateAsync();
 
         // Goes through the same AddDataProtection()/DI path Program.cs uses in production,
         // instead of the static DataProtectionProvider.Create(...) factory, to avoid depending

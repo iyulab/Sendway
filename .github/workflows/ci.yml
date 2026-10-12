@@ -23,6 +23,19 @@ jobs:
         image: rnwood/smtp4dev
         ports:
           - 2525:25
+      # The database the service runs on. The suite defaults to SQLite; the last step repeats the
+      # storage tests here so the migrations and the provider-specific SQL are exercised too.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +57,8 @@ jobs:
       - run: dotnet build Sendway.slnx --configuration Release
 
       - run: dotnet test Sendway.slnx --configuration Release --no-build
+
+      - name: Storage tests against PostgreSQL
+        run: dotnet test tests/Sendway.Core.Tests --configuration Release --no-build
+        env:
+          SENDWAY_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
