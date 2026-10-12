@@ -55,6 +55,17 @@ builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 
 builder.Services.AddMemoryCache();
 
+// Errors answer in one shape wherever they come from. An endpoint that refuses a request writes
+// its own problem details (ApiProblem); the ones nobody wrote — an unreadable body, an unknown
+// path, an unhandled failure — get theirs from the status code pages and the exception handler
+// below, and ApiProblem.Complete gives all of them a `code`.
+builder.Services.AddProblemDetails(options =>
+    options.CustomizeProblemDetails = context => ApiProblem.Complete(context.ProblemDetails));
+
+// An unreadable request body is answered as a 400 in every environment, rather than thrown where
+// the environment is Development.
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
 builder.Services.AddOptions<MessageDeliveryOptions>().BindConfiguration("Sendway:Delivery");
 builder.Services.AddSingleton<MessageDeliverySignal>();
 builder.Services.AddSingleton<MessageDeliveryProcessor>();
@@ -76,6 +87,9 @@ builder.Services.AddHostedService<ChannelCredentialSeeder>();
 builder.Services.AddHostedService<DeliveryWorker>();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 var messages = app.MapGroup("/messages")
     .AddEndpointFilter<TenantAuthFilter>()

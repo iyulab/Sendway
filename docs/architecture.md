@@ -33,22 +33,25 @@
 
 ### 오류 응답
 
-본문이 있는 오류 응답은 모두 같은 형식([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, `application/problem+json`)입니다.
+오류 응답은 모두 같은 형식([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, `application/problem+json`)입니다. 엔드포인트가 요청을 거절한 경우뿐 아니라, 본문을 읽지 못했거나 경로가 없거나 처리 중 예기치 않게 실패한 경우도 같습니다.
 
 ```json
 {"type": "…", "title": "Bad Request", "status": 400, "detail": "subject must not exceed 200 characters.", "code": "invalid_request"}
 ```
 
-`code`는 호출자가 분기할 수 있는 값이고 계약의 일부입니다. `detail`은 사람이 읽는 영어 설명이며 문구는 바뀔 수 있으므로 여기에 의존하지 않습니다.
+`code`는 호출자가 분기할 수 있는 값이고 계약의 일부입니다. `detail`은 사람이 읽는 영어 설명이며 문구는 바뀔 수 있으므로 여기에 의존하지 않습니다. `traceId` 같은 다른 멤버가 함께 올 수 있으며, 모르는 멤버는 무시하면 됩니다.
 
 | `code` | 상태 | 의미 |
 |---|---|---|
-| `invalid_request` | 400 | 요청 자체가 잘못됨(필수 필드 누락, 크기 상한 초과, 쓸 수 없는 값). 그대로 다시 보내도 같은 응답 |
+| `invalid_request` | 400, 405, 415 | 요청 자체가 잘못됨(필수 필드 누락, 크기 상한 초과, 쓸 수 없는 값, JSON으로 읽을 수 없는 본문, 허용되지 않는 메서드). 그대로 다시 보내도 같은 응답 |
 | `invalid_recipient` | 400 | 목적지 주소의 형식이 잘못됨 |
+| `unauthorized` | 401 | API 키가 없거나, 알 수 없거나, 비활성 테넌트의 키 |
+| `not_found` | 404 | 그 경로에 리소스가 없거나 호출자에게 보이지 않음 |
 | `idempotency_key_reused` | 422 | 같은 `Idempotency-Key`가 다른 내용의 요청에 이미 쓰임 |
 | `rate_limited` | 429 | 테넌트의 요청 한도 초과. `Retry-After` 헤더만큼 기다린 뒤 재시도 |
+| `internal_error` | 500 | 서비스 쪽 실패. 요청이 접수됐는지 알 수 없으므로 같은 `Idempotency-Key`로 다시 보내면 안전 |
 
-인증 실패(`401`)와 없는 리소스(`404`)는 본문 없이 상태 코드만 응답합니다.
+`code`가 없는 오류 응답은 Sendway가 아니라 그 앞의 프록시나 게이트웨이가 낸 것입니다(요청이 `Accept` 헤더로 JSON을 받지 않겠다고 한 경우는 예외로, 이때는 상태 코드만 의미가 있습니다).
 
 ### 전달과 재시도
 

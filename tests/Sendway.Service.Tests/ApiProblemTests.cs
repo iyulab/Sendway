@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -138,6 +139,114 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
         var response = await admin.PutAsJsonAsync($"/admin/tenants/{_tenantId}/webhook", new SetTenantWebhookRequest("ftp://receiver.example.com"));
 
         await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
+    }
+
+    // The errors below are answered before any endpoint code runs (or after it failed), so no
+    // endpoint chose their shape.
+
+    [Fact]
+    public async Task UnreadableBody_IsAnInvalidRequest()
+    {
+        var response = await CreateTenantClient().PostAsync(
+            "/messages/email",
+            new StringContent("{bad", Encoding.UTF8, "application/json"));
+
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
+    }
+
+    [Fact]
+    public async Task BodyThatIsNotJson_IsAnInvalidRequest()
+    {
+        var response = await CreateTenantClient().PostAsync(
+            "/messages/email",
+            new StringContent("to=user@example.com", Encoding.UTF8, "text/plain"));
+
+        await AssertProblemAsync(response, HttpStatusCode.UnsupportedMediaType, "invalid_request");
+    }
+
+    [Fact]
+    public async Task MissingApiKey_IsUnauthorized()
+    {
+        var response = await _factory.CreateClient().PostAsJsonAsync(
+            "/messages/email",
+            new SendEmailRequest(["user@example.com"], "Subject", "Body"));
+
+        await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "unauthorized");
+    }
+
+    [Fact]
+    public async Task MissingAdminKey_IsUnauthorized()
+    {
+        var response = await _factory.CreateClient().GetAsync("/admin/tenants");
+
+        await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "unauthorized");
+    }
+
+    [Fact]
+    public async Task UnknownMessage_IsNotFound()
+    {
+        var response = await CreateTenantClient().GetAsync($"/messages/{Guid.NewGuid()}");
+
+        await AssertProblemAsync(response, HttpStatusCode.NotFound, "not_found");
+    }
+
+    [Fact]
+    public async Task UnknownPath_IsNotFound()
+    {
+        var response = await _factory.CreateClient().GetAsync("/no-such-path");
+
+        await AssertProblemAsync(response, HttpStatusCode.NotFound, "not_found");
+    }
+
+    [Fact]
+    public async Task WrongMethod_IsAnInvalidRequest()
+    {
+        var response = await CreateTenantClient().DeleteAsync("/messages/email");
+
+        await AssertProblemAsync(response, HttpStatusCode.MethodNotAllowed, "invalid_request");
+    }
+
+    [Fact]
+    public async Task UnexpectedFailure_IsAnInternalErrorThatSaysNothingAboutItsCause()
+    {
+        var failing = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IMessageOutbox>();
+            services.AddSingleton<IMessageOutbox, UnavailableOutbox>();
+        }));
+        var client = failing.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
+
+        var response = await client.GetAsync($"/messages/{Guid.NewGuid()}");
+
+        await AssertProblemAsync(response, HttpStatusCode.InternalServerError, "internal_error");
+        Assert.DoesNotContain(UnavailableOutbox.Cause, await response.Content.ReadAsStringAsync());
+    }
+
+    private sealed class UnavailableOutbox : IMessageOutbox
+    {
+        public const string Cause = "the storage is unreachable";
+
+        public Task<EnqueueResult> EnqueueAsync(MessageSubmission submission, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(Cause);
+
+        public Task<MessageRecord?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(Cause);
+
+        // The delivery worker polls this; an empty queue keeps it idle.
+        public Task<ClaimedMessage?> ClaimNextAsync(TimeSpan lease, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ClaimedMessage?>(null);
+
+        public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task MarkFailedAsync(ClaimedMessage claim, string error, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ScheduleRetryAsync(ClaimedMessage claim, string error, TimeSpan delay, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ReleaseAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new QueueStats(0, 0, 0, null));
     }
 
     private sealed class NoopEmailSender : IEmailSender
