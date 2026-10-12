@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sendway.Core;
 
 namespace Sendway.Service.Endpoints.Admin;
@@ -26,10 +27,10 @@ public static class SetTenantCredentialEndpoint
             {
                 case ChannelCredentialNames.Smtp:
                 {
-                    var options = await request.ReadFromJsonAsync<SmtpOptions>(cancellationToken);
+                    var (options, error) = await ReadAsync<SmtpOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error = "invalid smtp credential payload" });
+                        return Results.BadRequest(new { error });
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Smtp, options, cancellationToken);
@@ -37,10 +38,10 @@ public static class SetTenantCredentialEndpoint
                 }
                 case ChannelCredentialNames.EmailGraph:
                 {
-                    var options = await request.ReadFromJsonAsync<GraphOptions>(cancellationToken);
+                    var (options, error) = await ReadAsync<GraphOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error = "invalid email-graph credential payload" });
+                        return Results.BadRequest(new { error });
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.EmailGraph, options, cancellationToken);
@@ -51,10 +52,10 @@ public static class SetTenantCredentialEndpoint
                 }
                 case ChannelCredentialNames.Fcm:
                 {
-                    var options = await request.ReadFromJsonAsync<FcmOptions>(cancellationToken);
+                    var (options, error) = await ReadAsync<FcmOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error = "invalid fcm credential payload" });
+                        return Results.BadRequest(new { error });
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Fcm, options, cancellationToken);
@@ -72,5 +73,30 @@ public static class SetTenantCredentialEndpoint
                     return Results.BadRequest(new { error = $"unknown channel '{channel}'" });
             }
         });
+    }
+
+    // Reads and checks the credential. A body that isn't JSON, or lacks a required property, is the
+    // caller's mistake and is answered as one — left to the framework it would surface as a 500.
+    private static async Task<(T? Options, string? Error)> ReadAsync<T>(
+        HttpRequest request,
+        Func<T, string?> validate,
+        CancellationToken cancellationToken) where T : class
+    {
+        T? options;
+        try
+        {
+            options = await request.ReadFromJsonAsync<T>(cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            return (null, $"The credential could not be read: {ex.Message}");
+        }
+
+        if (options is null)
+        {
+            return (null, "A credential is required.");
+        }
+
+        return validate(options) is { } error ? (null, error) : (options, null);
     }
 }

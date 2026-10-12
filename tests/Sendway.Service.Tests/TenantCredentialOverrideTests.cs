@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -73,10 +74,9 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
-        // CredentialsJson is deliberately not a real service-account payload — this exercises the
-        // endpoint's persistence + InvalidateTenant call path, not FcmPushSender's FirebaseApp
-        // creation (which this plan does not test against real FCM, per Task 3's brief).
-        var overridePayload = new FcmOptions { CredentialsJson = "{\"type\":\"service_account\"}" };
+        // Shaped like a service-account key but not a real one — this exercises the endpoint's
+        // persistence + InvalidateTenant call path, not FcmPushSender's FirebaseApp creation.
+        var overridePayload = new FcmOptions { CredentialsJson = FakeServiceAccountJson };
         var putResponse = await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/fcm", overridePayload);
         Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
 
@@ -84,7 +84,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var resolved = await credentialStore.GetAsync<FcmOptions>(created.TenantId, ChannelCredentialNames.Fcm);
 
         Assert.NotNull(resolved);
-        Assert.Equal("{\"type\":\"service_account\"}", resolved!.CredentialsJson);
+        Assert.Equal(FakeServiceAccountJson, resolved!.CredentialsJson);
     }
 
     [Fact]
@@ -220,4 +220,34 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Theory]
+    [InlineData("smtp", "{\"host\":\"smtp.example.com\"}")]
+    [InlineData("smtp", "{\"fromAddress\":\"noreply@example.com\"}")]
+    [InlineData("smtp", "{\"host\":\"smtp.example.com\",\"fromAddress\":\"not-an-email-address\"}")]
+    [InlineData("smtp", "not json")]
+    [InlineData("email-graph", "{\"directoryId\":\"d\",\"clientId\":\"c\",\"fromAddress\":\"noreply@example.com\"}")]
+    [InlineData("email-graph", "{\"directoryId\":\"d\",\"clientId\":\"c\",\"clientSecret\":\"\",\"fromAddress\":\"noreply@example.com\"}")]
+    [InlineData("fcm", "{}")]
+    [InlineData("fcm", "{\"credentialsJson\":\"{}\"}")]
+    public async Task SetCredential_ThatCouldNeverWork_Returns400AndStoresNothing(string channel, string body)
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var response = await adminClient.PutAsync(
+            $"/admin/tenants/{created!.TenantId}/credentials/{channel}",
+            new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("error", await response.Content.ReadAsStringAsync());
+
+        await using var db = await _factory.Services.GetRequiredService<IDbContextFactory<SendwayDbContext>>().CreateDbContextAsync();
+        Assert.False(await db.ChannelCredentials.AnyAsync(c => c.TenantId == created.TenantId));
+    }
+
+    private const string FakeServiceAccountJson =
+        "{\"type\":\"service_account\",\"client_email\":\"sender@project.iam.gserviceaccount.com\",\"private_key\":\"not-a-real-key\"}";
 }
