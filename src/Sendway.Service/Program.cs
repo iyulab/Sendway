@@ -61,7 +61,8 @@ builder.Services.AddAuthentication()
     .AddScheme<AuthenticationSchemeOptions, AdminKeyAuthenticationHandler>(AdminKeyAuthenticationHandler.SchemeName, null);
 builder.Services.AddAuthorization();
 
-builder.Services.AddMemoryCache();
+builder.Services.AddRateLimiter(options =>
+    options.AddPolicy<Guid, TenantRateLimitPolicy>(TenantRateLimitPolicy.PolicyName));
 
 // Errors answer in one shape wherever they come from. An endpoint that refuses a request writes
 // its own problem details (ApiProblem); the ones nobody wrote — an unreadable body, an unknown
@@ -100,12 +101,13 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 var messages = app.MapGroup("/messages")
     .RequireAuthorization(policy => policy
         .AddAuthenticationSchemes(TenantKeyAuthenticationHandler.SchemeName)
         .RequireAuthenticatedUser())
-    .AddEndpointFilter<TenantRateLimitFilter>();
+    .RequireRateLimiting(TenantRateLimitPolicy.PolicyName);
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapGetMessageStatusEndpoint();

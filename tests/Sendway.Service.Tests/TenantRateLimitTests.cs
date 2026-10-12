@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,12 +11,12 @@ using Xunit;
 
 namespace Sendway.Service.Tests;
 
-public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class TenantRateLimitTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly WebApplicationFactory<Program> _baseFactory;
     private readonly TestIsolatedStorage _storage = new();
 
-    public TenantRateLimitFilterTests(WebApplicationFactory<Program> factory)
+    public TenantRateLimitTests(WebApplicationFactory<Program> factory)
     {
         _baseFactory = factory;
     }
@@ -93,6 +94,30 @@ public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_OverTheLimit_IsRefusedBeforeItsBodyIsRead()
+    {
+        var factory = CreateFactory(requestsPerMinute: "1");
+        var client = await CreateAuthenticatedClientAsync(factory);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
+
+        var response = await client.PostAsync("/messages/email", new StringContent("{bad", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_ConcurrentRequests_NeverExceedTheLimit()
+    {
+        var factory = CreateFactory(requestsPerMinute: "5");
+        var client = await CreateAuthenticatedClientAsync(factory);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 40).Select(_ => Task.Run(() => SendAsync(client))));
+
+        Assert.Equal(5, responses.Count(response => response.StatusCode == HttpStatusCode.Accepted));
+        Assert.Equal(35, responses.Count(response => response.StatusCode == HttpStatusCode.TooManyRequests));
     }
 
     private sealed class NoopEmailSender : IEmailSender
