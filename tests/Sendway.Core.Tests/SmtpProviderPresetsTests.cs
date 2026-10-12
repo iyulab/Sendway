@@ -51,4 +51,22 @@ public class SmtpProviderPresetsTests
 
         Assert.Throws<InvalidOperationException>(() => SmtpProviderPresets.Resolve(options));
     }
+
+    [Theory]
+    [InlineData("{\"Provider\":\"Office365\",\"FromAddress\":\"noreply@example.com\"}")]
+    [InlineData("{\"Provider\":1,\"FromAddress\":\"noreply@example.com\"}")]
+    public void Provider_IsReadFromJsonByNameOrByNumber(string json)
+    {
+        var options = System.Text.Json.JsonSerializer.Deserialize<SmtpOptions>(json);
+
+        Assert.Equal(SmtpProvider.Office365, options!.Provider);
+    }
+
+    [Fact]
+    public void Provider_IsWrittenToJsonByName()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new SmtpOptions { Provider = SmtpProvider.Gmail, FromAddress = "noreply@example.com" });
+
+        Assert.Contains("\"Gmail\"", json);
+    }
 }

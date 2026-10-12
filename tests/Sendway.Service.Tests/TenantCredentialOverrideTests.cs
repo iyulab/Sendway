@@ -248,6 +248,27 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         Assert.False(await db.ChannelCredentials.AnyAsync(c => c.TenantId == created.TenantId));
     }
 
+    [Fact]
+    public async Task SetCredential_SmtpProviderGivenByName_IsAccepted()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var response = await adminClient.PutAsync(
+            $"/admin/tenants/{created!.TenantId}/credentials/smtp",
+            new StringContent(
+                "{\"provider\":\"Gmail\",\"username\":\"account@example.com\",\"password\":\"app-password\",\"fromAddress\":\"account@example.com\"}",
+                System.Text.Encoding.UTF8,
+                "application/json"));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var resolved = await _factory.Services.GetRequiredService<ICredentialStore>()
+            .GetAsync<SmtpOptions>(created.TenantId, ChannelCredentialNames.Smtp);
+        Assert.Equal(SmtpProvider.Gmail, resolved!.Provider);
+    }
+
     private const string FakeServiceAccountJson =
         "{\"type\":\"service_account\",\"client_email\":\"sender@project.iam.gserviceaccount.com\",\"private_key\":\"not-a-real-key\"}";
 }
