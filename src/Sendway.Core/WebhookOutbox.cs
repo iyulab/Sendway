@@ -52,4 +52,10 @@ public sealed class WebhookOutbox : IDeliveryQueue<ClaimedWebhook>
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         await _queue.ReleaseAsync(db, claim, cancellationToken);
     }
+
+    public async Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await _queue.GetStatsAsync(db, cancellationToken);
+    }
 }

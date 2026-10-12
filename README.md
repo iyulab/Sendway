@@ -39,6 +39,30 @@ PostgreSQL)합니다. 채널 자격증명(암호화됨)과 Data Protection 키 �
 마운트하지 않으면 컨테이너를 새로 만들 때마다 초기화됩니다(재기동 시 위 환경변수 값으로 자동
 재시드되므로 서비스 자체는 계속 동작하지만, 그 사이의 발송 이력 조회 결과는 사라집니다).
 
+## 보내 보기
+
+관리자 키(`Sendway__AdminApiKey` 환경변수로 지정)로 테넌트를 만들고, 받은 API 키로 발송합니다.
+
+```bash
+# 테넌트 생성 — apiKey는 이 응답에서만 볼 수 있습니다
+curl -X POST http://localhost:8080/admin/tenants \
+  -H "X-Admin-Key: <관리자 키>" -H "Content-Type: application/json" \
+  -d '{"name": "my-service"}'
+
+# 발송 요청 — 접수되면 202와 메시지 ID를 바로 돌려줍니다
+curl -X POST http://localhost:8080/messages/email \
+  -H "X-Api-Key: <apiKey>" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: <요청마다 고유한 값>" \
+  -d '{"to": ["user@example.com"], "subject": "Hello", "body": "Hello from Sendway"}'
+# → 202 {"id": "…", "status": "Queued"}
+
+# 발송 결과 확인
+curl http://localhost:8080/messages/<id> -H "X-Api-Key: <apiKey>"
+# → {"status": "Sent", "attempts": 1, …}
+```
+
+발송은 요청과 따로 진행되며, 실패하면 Sendway가 간격을 두고 다시 시도합니다. 같은 `Idempotency-Key`로 다시 요청하면 메시지를 새로 만들지 않고 같은 ID를 돌려주므로, 응답을 받지 못했을 때 안심하고 재요청할 수 있습니다. 결과를 조회하는 대신 웹훅으로 받을 수도 있습니다 — [아키텍처](docs/architecture.md) 참고.
+
 ## 개발
 
 테스트 중 하나(`Sendway.Core.Tests`, `Category=Integration`)는 로컬 SMTP 캐처가 필요합니다:

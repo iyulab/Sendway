@@ -92,6 +92,7 @@ admin.MapRotateTenantKeyEndpoint();
 admin.MapSetTenantCredentialEndpoint();
 admin.MapDeleteTenantCredentialEndpoint();
 admin.MapTenantWebhookEndpoints();
+admin.MapGetQueueStatsEndpoint();
 
 app.Run();
 

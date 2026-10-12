@@ -98,6 +98,27 @@ internal sealed class DeliveryQueue<TEntity> where TEntity : QueuedDelivery
             cancellationToken);
     }
 
+    public async Task<QueueStats> GetStatsAsync(SendwayDbContext db, CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        DateTimeOffset? dueBy = now;
+        DateTimeOffset? since = now - TimeSpan.FromHours(24);
+        var items = db.Set<TEntity>().AsNoTracking();
+
+        var queued = await items.CountAsync(m => m.Status == DeliveryStatus.Queued, cancellationToken);
+        var sending = await items.CountAsync(m => m.Status == DeliveryStatus.Sending, cancellationToken);
+        var failed = await items.CountAsync(m => m.Status == DeliveryStatus.Failed && m.CompletedAt >= since, cancellationToken);
+
+        // The same "due" test the claim uses, so this is exactly what a worker would pick up next.
+        var oldestDue = await items
+            .Where(m => (m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending) && m.NextAttemptAt <= dueBy)
+            .OrderBy(m => m.NextAttemptAt)
+            .Select(m => m.NextAttemptAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new QueueStats(queued, sending, failed, oldestDue is null ? null : now - oldestDue.Value);
+    }
+
     // Scopes an outcome update to the attempt that was claimed. If the lease expired and another
     // worker has since claimed the item, the attempt count has moved on and the stale outcome is
     // dropped instead of overwriting the newer attempt's state.

@@ -19,4 +19,11 @@ public interface IDeliveryQueue<TClaim> where TClaim : ClaimedDelivery
     // Hands a claimed item back untouched (the attempt doesn't count) — for a worker that is
     // shutting down before the attempt could finish.
     Task ReleaseAsync(TClaim claim, CancellationToken cancellationToken = default);
+
+    Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default);
 }
+
+// A point-in-time view of one queue, for telling a healthy queue from a stuck one. OldestDueAge is
+// how long the longest-waiting claimable item has been claimable: near zero while delivery keeps up,
+// growing when nothing is picking items up. Null when nothing is due.
+public sealed record QueueStats(int Queued, int Sending, int FailedInLast24Hours, TimeSpan? OldestDueAge);

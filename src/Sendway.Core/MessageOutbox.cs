@@ -122,6 +122,12 @@ public sealed class MessageOutbox : IMessageOutbox
         await _queue.ReleaseAsync(db, claim, cancellationToken);
     }
 
+    public async Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await _queue.GetStatsAsync(db, cancellationToken);
+    }
+
     // Recording the final outcome and queueing the event that announces it happen in one
     // transaction: there is never an outcome without its event, nor an event for an outcome that
     // wasn't recorded.
