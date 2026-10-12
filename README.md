@@ -1,5 +1,7 @@
 # Sendway
 
+[![CI](https://github.com/iyulab/Sendway/actions/workflows/ci.yml/badge.svg)](https://github.com/iyulab/Sendway/actions/workflows/ci.yml)
+
 이메일 · SMS · 앱 푸시 · 슬랙/텔레그램 등 다양한 채널의 메시지 발송을 하나의 API로 통합하는 백엔드 서비스입니다.
 
 ## 무엇을 하는가
@@ -72,7 +74,7 @@ docker run -d --name sendway-smtp4dev -p 2525:25 -p 5001:80 rnwood/smtp4dev
 dotnet test
 ```
 
-캐처 없이 실행하려면 `dotnet test --filter "Category!=Integration"`.
+캐처 없이 실행하려면 `dotnet test --filter "Category!=Integration"`. CI는 push와 풀 리퀘스트마다 캐처를 함께 띄워 전체 테스트를 실행합니다.
 
 ## 문서
 
