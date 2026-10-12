@@ -23,13 +23,13 @@ public class TenantStoreTests : IAsyncLifetime
     [Fact]
     public async Task CreateAsync_ThenGetByApiKeyHash_ReturnsCreatedTenant()
     {
-        var tenant = await _store.CreateAsync("Authway", "hash-abc");
+        var tenant = await _store.CreateAsync("billing-service", "hash-abc");
 
         var found = await _store.GetByApiKeyHashAsync("hash-abc");
 
         Assert.NotNull(found);
         Assert.Equal(tenant.Id, found!.Id);
-        Assert.Equal("Authway", found.Name);
+        Assert.Equal("billing-service", found.Name);
         Assert.True(found.Active);
     }
 
@@ -44,7 +44,7 @@ public class TenantStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetActiveAsync_ExistingTenant_UpdatesActiveFlagAndReturnsTrue()
     {
-        var tenant = await _store.CreateAsync("Authway", "hash-abc");
+        var tenant = await _store.CreateAsync("billing-service", "hash-abc");
 
         var updated = await _store.SetActiveAsync(tenant.Id, active: false);
 
@@ -64,7 +64,7 @@ public class TenantStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetApiKeyHashAsync_RotatesKeyAndInvalidatesOldHash()
     {
-        var tenant = await _store.CreateAsync("Authway", "hash-old");
+        var tenant = await _store.CreateAsync("billing-service", "hash-old");
 
         var updated = await _store.SetApiKeyHashAsync(tenant.Id, "hash-new");
 
@@ -76,8 +76,8 @@ public class TenantStoreTests : IAsyncLifetime
     [Fact]
     public async Task ListAsync_ReturnsAllCreatedTenants()
     {
-        await _store.CreateAsync("Authway", "hash-1");
-        await _store.CreateAsync("yesung", "hash-2");
+        await _store.CreateAsync("billing-service", "hash-1");
+        await _store.CreateAsync("inventory-service", "hash-2");
 
         var all = await _store.ListAsync();
 

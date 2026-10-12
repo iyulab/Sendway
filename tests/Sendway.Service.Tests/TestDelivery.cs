@@ -11,11 +11,16 @@ namespace Sendway.Service.Tests;
 /// </summary>
 internal static class TestDelivery
 {
+    // Messages first, then the events their outcomes produced.
     public static async Task DeliverPendingAsync(WebApplicationFactory<Program> factory)
     {
-        var processor = factory.Services.GetRequiredService<MessageDeliveryProcessor>();
+        var messages = factory.Services.GetRequiredService<MessageDeliveryProcessor>();
+        while (await messages.ProcessNextAsync())
+        {
+        }
 
-        while (await processor.ProcessNextAsync())
+        var webhooks = factory.Services.GetRequiredService<WebhookDeliveryProcessor>();
+        while (await webhooks.ProcessNextAsync())
         {
         }
     }

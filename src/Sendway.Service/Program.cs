@@ -56,12 +56,24 @@ builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddOptions<MessageDeliveryOptions>().BindConfiguration("Sendway:Delivery");
+builder.Services.AddSingleton<MessageDeliverySignal>();
 builder.Services.AddSingleton<MessageDeliveryProcessor>();
-builder.Services.AddSingleton<DeliverySignal>();
+builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<MessageDeliveryProcessor>());
+
+builder.Services.AddOptions<WebhookDeliveryOptions>().BindConfiguration("Sendway:Webhooks");
+builder.Services.AddSingleton<IWebhookEndpointStore, WebhookEndpointStore>();
+builder.Services.AddSingleton<WebhookOutbox>();
+builder.Services.AddSingleton<WebhookDeliverySignal>();
+builder.Services.AddSingleton<IWebhookSender>(sp => new HttpWebhookSender(
+    // Redirects are not followed: the signed request goes to the registered URL or nowhere.
+    new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(5) }),
+    sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<WebhookDeliveryProcessor>();
+builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<WebhookDeliveryProcessor>());
 
 // Order matters: the seeder migrates the schema, and the delivery worker must not claim before that.
 builder.Services.AddHostedService<ChannelCredentialSeeder>();
-builder.Services.AddHostedService<MessageDeliveryWorker>();
+builder.Services.AddHostedService<DeliveryWorker>();
 
 var app = builder.Build();
 
@@ -79,6 +91,7 @@ admin.MapSetTenantActiveEndpoint();
 admin.MapRotateTenantKeyEndpoint();
 admin.MapSetTenantCredentialEndpoint();
 admin.MapDeleteTenantCredentialEndpoint();
+admin.MapTenantWebhookEndpoints();
 
 app.Run();
 

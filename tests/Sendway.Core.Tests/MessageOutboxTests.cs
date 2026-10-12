@@ -17,7 +17,7 @@ public class MessageOutboxTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.EnsureCreatedAsync();
-        _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time);
+        _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
     }
 
     public Task DisposeAsync()
@@ -44,7 +44,7 @@ public class MessageOutboxTests : IAsyncLifetime
 
         var stored = await StoredAsync(result.Record.Id);
         Assert.Equal(EnqueueOutcome.Accepted, result.Outcome);
-        Assert.Equal(MessageDeliveryStatus.Queued, stored.Status);
+        Assert.Equal(DeliveryStatus.Queued, stored.Status);
         Assert.Equal(_tenantId, stored.TenantId);
         Assert.Equal(MessageChannels.Email, stored.Channel);
         Assert.Equal("user@example.com", stored.Recipient);
@@ -85,7 +85,7 @@ public class MessageOutboxTests : IAsyncLifetime
 
         Assert.Equal(EnqueueOutcome.Replayed, second.Outcome);
         Assert.Equal(first.Record.Id, second.Record.Id);
-        Assert.Equal(MessageDeliveryStatus.Sending, second.Record.Status);
+        Assert.Equal(DeliveryStatus.Sending, second.Record.Status);
         Assert.Equal(1, await CountAsync());
     }
 
@@ -160,7 +160,7 @@ public class MessageOutboxTests : IAsyncLifetime
         Assert.Equal(1, claimed.AttemptCount);
 
         var stored = await StoredAsync(claimed.Id);
-        Assert.Equal(MessageDeliveryStatus.Sending, stored.Status);
+        Assert.Equal(DeliveryStatus.Sending, stored.Status);
         Assert.Equal(1, stored.AttemptCount);
     }
 
@@ -215,7 +215,7 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.MarkSentAsync(claimed!);
 
         var stored = await StoredAsync(claimed!.Id);
-        Assert.Equal(MessageDeliveryStatus.Sent, stored.Status);
+        Assert.Equal(DeliveryStatus.Sent, stored.Status);
         Assert.Equal(_time.GetUtcNow(), stored.CompletedAt);
         Assert.Null(stored.Error);
         Assert.Null(stored.Payload);
@@ -232,7 +232,7 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.MarkFailedAsync(claimed!, "the destination was rejected");
 
         var stored = await StoredAsync(claimed!.Id);
-        Assert.Equal(MessageDeliveryStatus.Failed, stored.Status);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("the destination was rejected", stored.Error);
         Assert.NotNull(stored.CompletedAt);
         Assert.Null(stored.Payload);
@@ -248,7 +248,7 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.ScheduleRetryAsync(claimed!, "temporarily unreachable", TimeSpan.FromSeconds(30));
 
         var stored = await StoredAsync(claimed!.Id);
-        Assert.Equal(MessageDeliveryStatus.Queued, stored.Status);
+        Assert.Equal(DeliveryStatus.Queued, stored.Status);
         Assert.Equal("temporarily unreachable", stored.Error);
         Assert.Null(stored.CompletedAt);
 
@@ -271,7 +271,7 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.ReleaseAsync(claimed!);
 
         var stored = await StoredAsync(claimed!.Id);
-        Assert.Equal(MessageDeliveryStatus.Queued, stored.Status);
+        Assert.Equal(DeliveryStatus.Queued, stored.Status);
         Assert.Equal(0, stored.AttemptCount);
 
         var reclaimed = await _outbox.ClaimNextAsync(Lease);
@@ -290,7 +290,7 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.MarkFailedAsync(stale!, "reported too late");
 
         var stored = await StoredAsync(current!.Id);
-        Assert.Equal(MessageDeliveryStatus.Sending, stored.Status);
+        Assert.Equal(DeliveryStatus.Sending, stored.Status);
         Assert.Null(stored.Error);
         Assert.Equal(2, stored.AttemptCount);
     }

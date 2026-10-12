@@ -51,7 +51,17 @@
 | `acceptedAt` / `completedAt` | 접수 시각 / `Sent`·`Failed`가 된 시각(그 전에는 `null`) |
 | `channel`, `recipient` | 채널과 목적지 |
 
-발송 결과를 호출자에게 먼저 알려 주는 통지(웹훅)는 아직 없습니다 — 결과가 필요하면 이 조회를 사용합니다.
+### 결과 통지(웹훅)
+
+테넌트에 웹훅 엔드포인트를 등록해 두면, 그 테넌트의 메시지가 `Sent`나 `Failed`로 끝날 때마다 그 주소로 이벤트를 `POST`합니다. 재시도를 기다리는 중간 실패는 알리지 않습니다 — 최종 결과만 알립니다.
+
+- 등록: `PUT /admin/tenants/{id}/webhook`에 `{"url": "https://..."}`. 응답에 서명 비밀값(`whsec_...`)이 실려 오며 이때 한 번만 볼 수 있습니다. 다시 등록하면 주소와 비밀값이 함께 바뀝니다. `GET`으로 등록된 주소를 확인하고 `DELETE`로 해제합니다. 테넌트당 하나입니다.
+- 본문: `{"type": "message.sent" | "message.failed", "timestamp": "...", "data": { ... }}`. `data`는 그 메시지에 대해 상태 조회가 돌려주는 것과 같은 문서입니다.
+- 서명: 요청은 [Standard Webhooks](https://www.standardwebhooks.com/) 규격을 따릅니다. `webhook-id`(이벤트 ID), `webhook-timestamp`(초 단위 유닉스 시각), `webhook-signature`(`v1,` 뒤에 `{id}.{timestamp}.{본문}`을 비밀값으로 HMAC-SHA256 서명한 값) 헤더가 붙으므로, 이 규격의 기존 검증 라이브러리를 그대로 쓸 수 있습니다.
+- 응답: 수신 측이 `2xx`로 답하면 전달된 것으로 봅니다. 그 외의 응답이나 15초 안에 응답이 없으면 간격을 늘려가며 다시 보냅니다(기본값으로 최대 6회 — 5초·30초·3분·18분·1시간 48분 뒤). `410 Gone`은 더 받지 않겠다는 뜻으로 보고 그 이벤트는 다시 보내지 않습니다. 리다이렉트는 따라가지 않습니다.
+- 중복: 전달 보장은 최소 한 번입니다. 같은 이벤트가 다시 올 때 `webhook-id`는 같으므로 수신 측은 이 값으로 중복을 걸러냅니다.
+
+이벤트는 발송 결과를 기록하는 것과 같은 트랜잭션에서 대기열에 들어가므로, 결과는 기록됐는데 이벤트가 빠지는 경우는 없습니다. 모든 시도가 실패해 이벤트가 끝내 전달되지 않아도 결과 자체는 상태 조회로 확인할 수 있습니다. 시도 횟수·간격·제한 시간은 `Sendway:Webhooks:*` 설정(`MaxAttempts`, `RetryBaseDelay`, `RetryBackoffFactor`, `AttemptTimeout`, `Concurrency`)으로 바꿉니다.
 
 ### 중복 발송 방지
 
@@ -71,6 +81,6 @@
 
 ## 저장
 
-채널 자격증명과 메시지(접수된 내용과 발송 상태)는 PostgreSQL 데이터베이스에 저장됩니다(`ConnectionStrings:Sendway`). 메시지 내용은 발송에 필요한 동안만 암호화해 보관하고, 메시지가 `Sent`나 `Failed`로 끝나면 지웁니다 — 그 뒤에는 채널·목적지·상태·시각만 남습니다. 채널 자격증명은 **기본적으로 프로세스 시작 시 설정(환경변수 또는 설정 파일)으로 공급된 공용 값**을 쓰며, 테넌트별로 `PUT /admin/tenants/{id}/credentials/{channel}`을 통해 오버라이드를 등록할 수 있습니다(예: 테넌트마다 다른 Firebase 프로젝트). 등록한 오버라이드는 `DELETE /admin/tenants/{id}/credentials/{channel}`로 제거할 수 있으며, 제거 후에는 공용 기본값(없으면 미설정)으로 되돌아갑니다. 두 경우 모두 [ASP.NET Core Data Protection API](https://learn.microsoft.com/aspnet/core/security/data-protection/introduction)로 암호화한 뒤 기록합니다 — 특정 클라우드 벤더의 키 관리 서비스에 의존하지 않으므로 클라우드/온프레미스 배포 모두에서 동일하게 동작합니다. 암호화 키 자체는 별도 디렉터리(컨테이너 배포 시 `/data/dp-keys`, 볼륨 마운트 필요)에 파일로 보관됩니다. (테스트 스위트는 격리를 위해 별도로 SQLite 임시 파일을 씁니다 — 실행 중인 서비스와는 무관.) 메시지 템플릿 저장소는 아직 없습니다.
+채널 자격증명, 메시지(접수된 내용과 발송 상태), 웹훅 엔드포인트와 전달 대기 중인 이벤트는 PostgreSQL 데이터베이스에 저장됩니다(`ConnectionStrings:Sendway`). 웹훅 서명 비밀값은 채널 자격증명과 같은 방식으로 암호화해 둡니다. 메시지 내용은 발송에 필요한 동안만 암호화해 보관하고, 메시지가 `Sent`나 `Failed`로 끝나면 지웁니다 — 그 뒤에는 채널·목적지·상태·시각만 남습니다. 채널 자격증명은 **기본적으로 프로세스 시작 시 설정(환경변수 또는 설정 파일)으로 공급된 공용 값**을 쓰며, 테넌트별로 `PUT /admin/tenants/{id}/credentials/{channel}`을 통해 오버라이드를 등록할 수 있습니다(예: 테넌트마다 다른 Firebase 프로젝트). 등록한 오버라이드는 `DELETE /admin/tenants/{id}/credentials/{channel}`로 제거할 수 있으며, 제거 후에는 공용 기본값(없으면 미설정)으로 되돌아갑니다. 두 경우 모두 [ASP.NET Core Data Protection API](https://learn.microsoft.com/aspnet/core/security/data-protection/introduction)로 암호화한 뒤 기록합니다 — 특정 클라우드 벤더의 키 관리 서비스에 의존하지 않으므로 클라우드/온프레미스 배포 모두에서 동일하게 동작합니다. 암호화 키 자체는 별도 디렉터리(컨테이너 배포 시 `/data/dp-keys`, 볼륨 마운트 필요)에 파일로 보관됩니다. (테스트 스위트는 격리를 위해 별도로 SQLite 임시 파일을 씁니다 — 실행 중인 서비스와는 무관.) 메시지 템플릿 저장소는 아직 없습니다.
 
 내장 파일 DB(SQLite)를 컨테이너 배포에서 쓰지 않는 이유: SQLite는 EF Core 기본 WAL 저널 모드가 요구하는 파일 락을 네트워크 마운트 볼륨(Azure Files 등)에서 신뢰성 있게 지원하지 않는다 — 재현 시 `SQLite Error 5: database is locked`.

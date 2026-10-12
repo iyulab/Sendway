@@ -11,6 +11,10 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
+    public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
+
+    public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChannelCredential>().HasKey(c => new { c.TenantId, c.Channel });
@@ -31,6 +35,14 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
         });
 
         modelBuilder.Entity<Tenant>().HasIndex(t => t.ApiKeyHash).IsUnique();
+
+        modelBuilder.Entity<WebhookEndpoint>().HasKey(e => e.TenantId);
+
+        modelBuilder.Entity<WebhookDelivery>(delivery =>
+        {
+            delivery.Property(d => d.Status).HasConversion<string>();
+            delivery.HasIndex(d => new { d.Status, d.NextAttemptAt });
+        });
 
         if (Database.IsSqlite())
         {

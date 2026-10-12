@@ -1,6 +1,5 @@
 using Sendway.Core;
 using Sendway.Service.Auth;
-using Sendway.Service.Delivery;
 
 namespace Sendway.Service.Endpoints;
 
@@ -16,7 +15,7 @@ public static class SendPushEndpoint
 
     public static void MapSendPushEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapPost("/push", async (SendPushRequest request, HttpContext httpContext, IMessageOutbox outbox, DeliverySignal signal) =>
+        group.MapPost("/push", async (SendPushRequest request, HttpContext httpContext, IMessageOutbox outbox, MessageDeliverySignal signal) =>
         {
             if (string.IsNullOrWhiteSpace(request.DeviceToken) ||
                 string.IsNullOrWhiteSpace(request.Title) ||

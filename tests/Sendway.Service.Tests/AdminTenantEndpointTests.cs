@@ -43,12 +43,12 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
     {
         var client = CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway"));
+        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service"));
         var body = await response.Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(body);
-        Assert.Equal("Authway", body!.Name);
+        Assert.Equal("billing-service", body!.Name);
         Assert.StartsWith("sw_", body.ApiKey);
     }
 
@@ -57,7 +57,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
     {
         var client = _factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway"));
+        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -68,7 +68,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin-Key", "wrong-key");
 
-        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway"));
+        var response = await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -77,7 +77,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
     public async Task ListTenants_ReturnsCreatedTenantsWithoutApiKeys()
     {
         var client = CreateAdminClient();
-        await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway"));
+        await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service"));
 
         var response = await client.GetAsync("/admin/tenants");
         var body = await response.Content.ReadFromJsonAsync<List<TenantResponse>>();
@@ -85,7 +85,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(body);
         Assert.Single(body!);
-        Assert.Equal("Authway", body[0].Name);
+        Assert.Equal("billing-service", body[0].Name);
         Assert.True(body[0].Active);
     }
 
@@ -93,7 +93,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
     public async Task DeactivateThenReactivate_TogglesActiveFlag()
     {
         var client = CreateAdminClient();
-        var created = await (await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         var deactivateResponse = await client.PostAsync($"/admin/tenants/{created!.TenantId}/deactivate", content: null);
@@ -123,7 +123,7 @@ public class AdminTenantEndpointTests : IClassFixture<WebApplicationFactory<Prog
     public async Task RotateKey_OldKeyStopsWorkingNewKeyWorks()
     {
         var client = CreateAdminClient();
-        var created = await (await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await client.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         var rotateResponse = await client.PostAsync($"/admin/tenants/{created!.TenantId}/rotate-key", content: null);

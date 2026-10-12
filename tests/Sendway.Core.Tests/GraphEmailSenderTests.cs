@@ -16,7 +16,7 @@ public class GraphEmailSenderTests
         Microsoft.Kiota.Abstractions.ApiClientBuilder.RegisterDefaultSerializer<JsonSerializationWriterFactory>();
     }
 
-    // Regression: docket #148 — Authway's verification found real Graph sends (no Cc/Bcc) failing
+    // Regression: real Graph sends with no Cc/Bcc failed
     // with "A null value was found for the property named 'bccRecipients' ... cannot be null but
     // it can have null values." GraphEmailSender used to assign `CcRecipients`/`BccRecipients` to a
     // C# null for empty Cc/Bcc, which Kiota's backing store serializes as an explicit JSON null —

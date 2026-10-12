@@ -1,6 +1,5 @@
 using Sendway.Core;
 using Sendway.Service.Auth;
-using Sendway.Service.Delivery;
 
 namespace Sendway.Service.Endpoints;
 
@@ -24,7 +23,7 @@ public static class SendEmailEndpoint
 
     public static void MapSendEmailEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IMessageOutbox outbox, DeliverySignal signal) =>
+        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IMessageOutbox outbox, MessageDeliverySignal signal) =>
         {
             if (request.To is null || request.To.Count == 0 ||
                 string.IsNullOrWhiteSpace(request.Subject) ||

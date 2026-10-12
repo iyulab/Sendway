@@ -1,9 +1,9 @@
-namespace Sendway.Service.Delivery;
+namespace Sendway.Core;
 
-// Wakes an idle delivery loop when there is (or may be) a message to pick up, so delivery doesn't
+// Wakes an idle delivery loop when there is (or may be) an item to pick up, so delivery doesn't
 // wait for the next poll. Purely an in-process latency shortcut: a missed or surplus signal costs
-// at most one poll interval or one empty lookup, never a message.
-public sealed class DeliverySignal
+// at most one poll interval or one empty lookup, never an item.
+public class DeliverySignal
 {
     // More pending wake-ups than this adds nothing: a loop that wakes keeps claiming until the
     // queue has nothing due.
@@ -28,3 +28,8 @@ public sealed class DeliverySignal
         await _pending.WaitAsync(timeout, cancellationToken);
     }
 }
+
+// One signal per queue, as distinct types so each can be injected where it belongs.
+public sealed class MessageDeliverySignal : DeliverySignal;
+
+public sealed class WebhookDeliverySignal : DeliverySignal;

@@ -48,10 +48,10 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
-        var overridePayload = new SmtpOptions { Host = "authway-only.example.com", FromAddress = "authway@example.com" };
+        var overridePayload = new SmtpOptions { Host = "billing-only.example.com", FromAddress = "billing@example.com" };
         var putResponse = await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/smtp", overridePayload);
         Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
 
@@ -60,7 +60,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var resolvedForOtherTenant = await credentialStore.GetAsync<SmtpOptions>(Guid.NewGuid(), ChannelCredentialNames.Smtp);
 
         Assert.NotNull(resolvedForTenant);
-        Assert.Equal("authway-only.example.com", resolvedForTenant!.Host);
+        Assert.Equal("billing-only.example.com", resolvedForTenant!.Host);
         Assert.Null(resolvedForOtherTenant);
     }
 
@@ -70,7 +70,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         // CredentialsJson is deliberately not a real service-account payload — this exercises the
@@ -93,7 +93,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         // Fake, never-valid credentials — exercises the endpoint's persistence + InvalidateTenant
@@ -104,7 +104,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
             DirectoryId = "00000000-0000-0000-0000-000000000000",
             ClientId = "00000000-0000-0000-0000-000000000000",
             ClientSecret = "not-a-real-secret",
-            FromAddress = "authway@example.com"
+            FromAddress = "billing@example.com"
         };
         var putResponse = await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/email-graph", overridePayload);
         Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
@@ -113,7 +113,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var resolved = await credentialStore.GetAsync<GraphOptions>(created.TenantId, ChannelCredentialNames.EmailGraph);
 
         Assert.NotNull(resolved);
-        Assert.Equal("authway@example.com", resolved!.FromAddress);
+        Assert.Equal("billing@example.com", resolved!.FromAddress);
     }
 
     [Fact]
@@ -122,10 +122,10 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
-        var overridePayload = new SmtpOptions { Host = "authway-only.example.com", FromAddress = "authway@example.com" };
+        var overridePayload = new SmtpOptions { Host = "billing-only.example.com", FromAddress = "billing@example.com" };
         await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/smtp", overridePayload);
 
         var deleteResponse = await adminClient.DeleteAsync($"/admin/tenants/{created.TenantId}/credentials/smtp");
@@ -146,7 +146,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         var overridePayload = new GraphOptions
@@ -154,7 +154,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
             DirectoryId = "00000000-0000-0000-0000-000000000000",
             ClientId = "00000000-0000-0000-0000-000000000000",
             ClientSecret = "not-a-real-secret",
-            FromAddress = "authway@example.com"
+            FromAddress = "billing@example.com"
         };
         await adminClient.PutAsJsonAsync($"/admin/tenants/{created!.TenantId}/credentials/email-graph", overridePayload);
 
@@ -184,7 +184,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         var response = await adminClient.DeleteAsync($"/admin/tenants/{created!.TenantId}/credentials/slack");
@@ -211,7 +211,7 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         var adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
 
-        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("Authway")))
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
             .Content.ReadFromJsonAsync<CreateTenantResponse>();
 
         var response = await adminClient.PutAsJsonAsync(

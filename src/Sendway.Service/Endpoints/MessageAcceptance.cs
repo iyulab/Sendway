@@ -1,6 +1,5 @@
 using Sendway.Core;
 using Sendway.Service.Auth;
-using Sendway.Service.Delivery;
 
 namespace Sendway.Service.Endpoints;
 
@@ -16,7 +15,7 @@ public static class MessageAcceptance
     public static async Task<IResult> AcceptAsync(
         HttpContext httpContext,
         IMessageOutbox outbox,
-        DeliverySignal signal,
+        MessageDeliverySignal signal,
         string channel,
         string recipient,
         string payload)

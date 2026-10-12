@@ -20,12 +20,13 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.EnsureCreatedAsync();
-        _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time);
+        _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
         _processor = new MessageDeliveryProcessor(
             _outbox,
             _emailSender,
             _pushSender,
             Options.Create(_options),
+            new MessageDeliverySignal(),
             NullLogger<MessageDeliveryProcessor>.Instance);
     }
 
@@ -78,7 +79,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal("<p>The Body</p>", sent.HtmlBody);
 
         var stored = await StoredAsync(enqueued.Record.Id);
-        Assert.Equal(MessageDeliveryStatus.Sent, stored.Status);
+        Assert.Equal(DeliveryStatus.Sent, stored.Status);
         Assert.Equal(1, stored.AttemptCount);
     }
 
@@ -96,7 +97,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal("device-token-123", sent.DeviceToken);
         Assert.Equal("The Title", sent.Title);
         Assert.Equal("The Body", sent.Body);
-        Assert.Equal(MessageDeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
+        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         await _processor.ProcessNextAsync();
 
         var stored = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Failed, stored.Status);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("the mailbox does not exist", stored.Error);
         Assert.Equal(1, stored.AttemptCount);
         Assert.False(await _processor.ProcessNextAsync());
@@ -123,7 +124,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         await _processor.ProcessNextAsync();
 
         var afterFailure = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Queued, afterFailure.Status);
+        Assert.Equal(DeliveryStatus.Queued, afterFailure.Status);
         Assert.Equal("connection refused", afterFailure.Error);
         Assert.Equal(_time.GetUtcNow() + _options.RetryBaseDelay, afterFailure.NextAttemptAt);
 
@@ -135,7 +136,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.True(await _processor.ProcessNextAsync());
 
         var afterRetry = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Sent, afterRetry.Status);
+        Assert.Equal(DeliveryStatus.Sent, afterRetry.Status);
         Assert.Equal(2, afterRetry.AttemptCount);
         Assert.Null(afterRetry.Error);
     }
@@ -173,7 +174,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         }
 
         var stored = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Failed, stored.Status);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("connection refused", stored.Error);
         Assert.Equal(_options.MaxAttempts, stored.AttemptCount);
         Assert.Equal(_options.MaxAttempts, _emailSender.CallCount);
@@ -190,8 +191,8 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         await _processor.ProcessNextAsync();
 
         var stored = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Queued, stored.Status);
-        Assert.Contains("did not respond", stored.Error);
+        Assert.Equal(DeliveryStatus.Queued, stored.Status);
+        Assert.Contains("No response within", stored.Error);
         Assert.Equal(1, stored.AttemptCount);
     }
 
@@ -208,7 +209,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         await processing;
 
         var stored = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Queued, stored.Status);
+        Assert.Equal(DeliveryStatus.Queued, stored.Status);
         Assert.Equal(0, stored.AttemptCount);
         Assert.Null(stored.Error);
     }
@@ -230,7 +231,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.True(await _processor.ProcessNextAsync());
 
         var stored = await StoredAsync(id);
-        Assert.Equal(MessageDeliveryStatus.Failed, stored.Status);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal(0, _emailSender.CallCount);
     }
 

@@ -17,15 +17,20 @@ public sealed class MessageOutbox : IMessageOutbox
     private readonly IDbContextFactory<SendwayDbContext> _dbContextFactory;
     private readonly IDataProtector _protector;
     private readonly TimeProvider _timeProvider;
+    private readonly WebhookDeliverySignal _webhookSignal;
+    private readonly DeliveryQueue<MessageRecord> _queue;
 
     public MessageOutbox(
         IDbContextFactory<SendwayDbContext> dbContextFactory,
         IDataProtectionProvider dataProtectionProvider,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        WebhookDeliverySignal webhookSignal)
     {
         _dbContextFactory = dbContextFactory;
         _protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
         _timeProvider = timeProvider;
+        _webhookSignal = webhookSignal;
+        _queue = new DeliveryQueue<MessageRecord>(timeProvider);
     }
 
     public async Task<EnqueueResult> EnqueueAsync(MessageSubmission submission, CancellationToken cancellationToken = default)
@@ -47,7 +52,7 @@ public sealed class MessageOutbox : IMessageOutbox
             TenantId = submission.TenantId,
             Channel = submission.Channel,
             Recipient = submission.Recipient,
-            Status = MessageDeliveryStatus.Queued,
+            Status = DeliveryStatus.Queued,
             AcceptedAt = now,
             NextAttemptAt = now,
             Payload = _protector.Protect(submission.Payload),
@@ -92,108 +97,70 @@ public sealed class MessageOutbox : IMessageOutbox
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        while (true)
+        var record = await _queue.ClaimNextAsync(db, lease, cancellationToken);
+
+        return record is null
+            ? null
+            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, _protector.Unprotect(record.Payload!), record.AttemptCount);
+    }
+
+    public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) =>
+        CompleteAsync(claim, DeliveryStatus.Sent, error: null, cancellationToken);
+
+    public Task MarkFailedAsync(ClaimedMessage claim, string error, CancellationToken cancellationToken = default) =>
+        CompleteAsync(claim, DeliveryStatus.Failed, error, cancellationToken);
+
+    public async Task ScheduleRetryAsync(ClaimedMessage claim, string error, TimeSpan delay, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await _queue.ScheduleRetryAsync(db, claim, error, delay, cancellationToken);
+    }
+
+    public async Task ReleaseAsync(ClaimedMessage claim, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await _queue.ReleaseAsync(db, claim, cancellationToken);
+    }
+
+    // Recording the final outcome and queueing the event that announces it happen in one
+    // transaction: there is never an outcome without its event, nor an event for an outcome that
+    // wasn't recorded.
+    private async Task CompleteAsync(ClaimedMessage claim, DeliveryStatus status, string? error, CancellationToken cancellationToken)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var recorded = await _queue.CompleteAsync(db, claim, status, error, cancellationToken) == 1;
+        var eventQueued = false;
+
+        if (recorded && await db.WebhookEndpoints.AnyAsync(e => e.TenantId == claim.TenantId, cancellationToken))
         {
-            DateTimeOffset? now = _timeProvider.GetUtcNow();
+            var record = await db.MessageRecords.AsNoTracking().FirstAsync(m => m.Id == claim.Id, cancellationToken);
+            var now = _timeProvider.GetUtcNow();
 
-            var candidate = await db.MessageRecords
-                .AsNoTracking()
-                .Where(m => (m.Status == MessageDeliveryStatus.Queued || m.Status == MessageDeliveryStatus.Sending) && m.NextAttemptAt <= now)
-                .OrderBy(m => m.NextAttemptAt)
-                .Select(m => new { m.Id, m.AttemptCount })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (candidate is null)
+            db.WebhookDeliveries.Add(new WebhookDelivery
             {
-                return null;
-            }
+                Id = Guid.NewGuid(),
+                TenantId = record.TenantId,
+                MessageId = record.Id,
+                EventType = MessageEvent.TypeFor(status),
+                Status = DeliveryStatus.Queued,
+                CreatedAt = now,
+                NextAttemptAt = now,
+                Payload = MessageEvent.Serialize(record, now)
+            });
 
-            // Conditional on the attempt count just read: if another worker claimed this row in
-            // between, its increment makes this update match nothing and the loop moves on. A plain
-            // UPDATE with an affected-row check rather than SELECT ... FOR UPDATE SKIP LOCKED, so the
-            // same code runs on every supported database.
-            var attempt = candidate.AttemptCount + 1;
-            DateTimeOffset? leaseExpiry = now + lease;
+            await db.SaveChangesAsync(cancellationToken);
+            eventQueued = true;
+        }
 
-            var claimed = await db.MessageRecords
-                .Where(m => m.Id == candidate.Id && m.AttemptCount == candidate.AttemptCount)
-                .ExecuteUpdateAsync(
-                    update => update
-                        .SetProperty(m => m.Status, MessageDeliveryStatus.Sending)
-                        .SetProperty(m => m.AttemptCount, attempt)
-                        .SetProperty(m => m.NextAttemptAt, leaseExpiry),
-                    cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-            if (claimed == 0)
-            {
-                continue;
-            }
-
-            var record = await db.MessageRecords.AsNoTracking().FirstAsync(m => m.Id == candidate.Id, cancellationToken);
-
-            return new ClaimedMessage(record.Id, record.TenantId, record.Channel, _protector.Unprotect(record.Payload!), attempt);
+        if (eventQueued)
+        {
+            _webhookSignal.Notify();
         }
     }
-
-    public Task MarkSentAsync(ClaimedMessage message, CancellationToken cancellationToken = default) =>
-        CompleteAsync(message, MessageDeliveryStatus.Sent, error: null, cancellationToken);
-
-    public Task MarkFailedAsync(ClaimedMessage message, string error, CancellationToken cancellationToken = default) =>
-        CompleteAsync(message, MessageDeliveryStatus.Failed, error, cancellationToken);
-
-    public async Task ScheduleRetryAsync(ClaimedMessage message, string error, TimeSpan delay, CancellationToken cancellationToken = default)
-    {
-        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-        DateTimeOffset? nextAttemptAt = _timeProvider.GetUtcNow() + delay;
-
-        await OwnedAttempt(db, message).ExecuteUpdateAsync(
-            update => update
-                .SetProperty(m => m.Status, MessageDeliveryStatus.Queued)
-                .SetProperty(m => m.Error, error)
-                .SetProperty(m => m.NextAttemptAt, nextAttemptAt),
-            cancellationToken);
-    }
-
-    public async Task ReleaseAsync(ClaimedMessage message, CancellationToken cancellationToken = default)
-    {
-        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-        DateTimeOffset? now = _timeProvider.GetUtcNow();
-        var previousAttemptCount = message.AttemptCount - 1;
-
-        await OwnedAttempt(db, message).ExecuteUpdateAsync(
-            update => update
-                .SetProperty(m => m.Status, MessageDeliveryStatus.Queued)
-                .SetProperty(m => m.AttemptCount, previousAttemptCount)
-                .SetProperty(m => m.NextAttemptAt, now),
-            cancellationToken);
-    }
-
-    private async Task CompleteAsync(ClaimedMessage message, MessageDeliveryStatus status, string? error, CancellationToken cancellationToken)
-    {
-        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-        DateTimeOffset? completedAt = _timeProvider.GetUtcNow();
-
-        await OwnedAttempt(db, message).ExecuteUpdateAsync(
-            update => update
-                .SetProperty(m => m.Status, status)
-                .SetProperty(m => m.Error, error)
-                .SetProperty(m => m.CompletedAt, completedAt)
-                .SetProperty(m => m.NextAttemptAt, (DateTimeOffset?)null)
-                .SetProperty(m => m.Payload, (string?)null),
-            cancellationToken);
-    }
-
-    // Scopes an outcome update to the attempt that was claimed. If the lease expired and another
-    // worker has since claimed the message, the attempt count has moved on and the stale outcome
-    // is dropped instead of overwriting the newer attempt's state.
-    private static IQueryable<MessageRecord> OwnedAttempt(SendwayDbContext db, ClaimedMessage message) =>
-        db.MessageRecords.Where(m =>
-            m.Id == message.Id &&
-            m.Status == MessageDeliveryStatus.Sending &&
-            m.AttemptCount == message.AttemptCount);
 
     private static async Task<EnqueueResult?> FindByIdempotencyKeyAsync(
         SendwayDbContext db,
