@@ -182,6 +182,18 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
         await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "unauthorized");
     }
 
+    // Who is asking is settled before what they sent is read. (A path, method or content type
+    // that matches no endpoint is still answered as such: no endpoint, nobody to authenticate to.)
+    [Theory]
+    [InlineData("/messages/email")]
+    [InlineData("/admin/tenants")]
+    public async Task UnreadableBodyWithoutAKey_IsUnauthorized(string path)
+    {
+        var response = await _factory.CreateClient().PostAsync(path, new StringContent("{bad", Encoding.UTF8, "application/json"));
+
+        await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "unauthorized");
+    }
+
     [Fact]
     public async Task UnknownMessage_IsNotFound()
     {

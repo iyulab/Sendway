@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
@@ -53,6 +54,13 @@ builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.EmailGra
 builder.Services.AddSingleton<IEmailSender, EmailSenderRouter>();
 builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 
+// Who is calling is settled by the authentication middleware, before an endpoint reads the request
+// body: /messages by the tenant's API key, /admin by the administrator key.
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, TenantKeyAuthenticationHandler>(TenantKeyAuthenticationHandler.SchemeName, null)
+    .AddScheme<AuthenticationSchemeOptions, AdminKeyAuthenticationHandler>(AdminKeyAuthenticationHandler.SchemeName, null);
+builder.Services.AddAuthorization();
+
 builder.Services.AddMemoryCache();
 
 // Errors answer in one shape wherever they come from. An endpoint that refuses a request writes
@@ -90,15 +98,22 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseAuthentication();
+app.UseAuthorization();
 
 var messages = app.MapGroup("/messages")
-    .AddEndpointFilter<TenantAuthFilter>()
+    .RequireAuthorization(policy => policy
+        .AddAuthenticationSchemes(TenantKeyAuthenticationHandler.SchemeName)
+        .RequireAuthenticatedUser())
     .AddEndpointFilter<TenantRateLimitFilter>();
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapGetMessageStatusEndpoint();
 
-var admin = app.MapGroup("/admin").AddEndpointFilter<AdminAuthFilter>();
+var admin = app.MapGroup("/admin")
+    .RequireAuthorization(policy => policy
+        .AddAuthenticationSchemes(AdminKeyAuthenticationHandler.SchemeName)
+        .RequireAuthenticatedUser());
 admin.MapCreateTenantEndpoint();
 admin.MapListTenantsEndpoint();
 admin.MapSetTenantActiveEndpoint();

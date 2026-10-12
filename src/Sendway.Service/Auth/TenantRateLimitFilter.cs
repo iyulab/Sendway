@@ -3,7 +3,7 @@ using Sendway.Service.Endpoints;
 
 namespace Sendway.Service.Auth;
 
-// Applied after TenantAuthFilter within the /messages group (needs the tenant already resolved).
+// Applies to the /messages group, where authentication has already resolved the tenant.
 // In-memory sliding window, scoped per tenant — sufficient for the current single-instance
 // deployment (Container Apps maxReplicas: 1). If the deployment ever scales to multiple instances,
 // this needs to move to a shared store (e.g. the existing Postgres database) to stay accurate.
