@@ -30,7 +30,7 @@ public static class SetTenantCredentialEndpoint
                     var (options, error) = await ReadAsync<SmtpOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error });
+                        return ApiProblem.BadRequest(error!);
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Smtp, options, cancellationToken);
@@ -41,7 +41,7 @@ public static class SetTenantCredentialEndpoint
                     var (options, error) = await ReadAsync<GraphOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error });
+                        return ApiProblem.BadRequest(error!);
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.EmailGraph, options, cancellationToken);
@@ -55,7 +55,7 @@ public static class SetTenantCredentialEndpoint
                     var (options, error) = await ReadAsync<FcmOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
                     if (options is null)
                     {
-                        return Results.BadRequest(new { error });
+                        return ApiProblem.BadRequest(error!);
                     }
 
                     await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Fcm, options, cancellationToken);
@@ -70,7 +70,7 @@ public static class SetTenantCredentialEndpoint
                     return Results.NoContent();
                 }
                 default:
-                    return Results.BadRequest(new { error = $"unknown channel '{channel}'" });
+                    return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }
         });
     }

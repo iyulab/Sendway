@@ -29,7 +29,7 @@ public static class SendEmailEndpoint
                 string.IsNullOrWhiteSpace(request.Subject) ||
                 string.IsNullOrWhiteSpace(request.Body))
             {
-                return Results.BadRequest(new { error = "to(최소 1개), subject, body는 모두 필수입니다." });
+                return ApiProblem.BadRequest("to (at least one address), subject and body are required.");
             }
 
             var cc = request.Cc ?? [];
@@ -39,29 +39,29 @@ public static class SendEmailEndpoint
             {
                 if (string.IsNullOrWhiteSpace(address))
                 {
-                    return Results.BadRequest(new { error = "to/cc/bcc에는 빈 주소를 포함할 수 없습니다." });
+                    return ApiProblem.BadRequest("to, cc and bcc must not contain an empty address.");
                 }
 
                 if (address.Length > MaxAddressLength)
                 {
-                    return Results.BadRequest(new { error = $"주소는 {MaxAddressLength}자를 초과할 수 없습니다: '{address}'" });
+                    return ApiProblem.BadRequest($"An address must not exceed {MaxAddressLength} characters: '{address}'");
                 }
             }
 
             var totalRecipients = request.To.Count + cc.Count + bcc.Count;
             if (totalRecipients > MaxRecipientsPerMessage)
             {
-                return Results.BadRequest(new { error = $"수신자(to+cc+bcc)는 총 {MaxRecipientsPerMessage}명을 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"The recipients (to, cc and bcc together) must not exceed {MaxRecipientsPerMessage}.");
             }
 
             if (request.Subject.Length > MaxSubjectLength)
             {
-                return Results.BadRequest(new { error = $"subject는 {MaxSubjectLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"subject must not exceed {MaxSubjectLength} characters.");
             }
 
             if (request.Body.Length > MaxBodyLength)
             {
-                return Results.BadRequest(new { error = $"body는 {MaxBodyLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"body must not exceed {MaxBodyLength} characters.");
             }
 
             // Blank htmlBody is treated as "not provided" rather than a validation error — it's an
@@ -73,7 +73,7 @@ public static class SendEmailEndpoint
             var htmlBody = string.IsNullOrWhiteSpace(request.HtmlBody) ? null : request.HtmlBody;
             if (htmlBody is not null && htmlBody.Length > MaxBodyLength)
             {
-                return Results.BadRequest(new { error = $"htmlBody는 {MaxBodyLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"htmlBody must not exceed {MaxBodyLength} characters.");
             }
 
             EmailMessage message;
@@ -85,7 +85,7 @@ public static class SendEmailEndpoint
             {
                 // A malformed address is known before anything is sent, so it is refused here rather
                 // than accepted and reported as a failed delivery later.
-                return Results.BadRequest(new { error = ex.Message });
+                return ApiProblem.BadRequest(ex.Message, ApiProblem.InvalidRecipient);
             }
 
             return await MessageAcceptance.AcceptAsync(

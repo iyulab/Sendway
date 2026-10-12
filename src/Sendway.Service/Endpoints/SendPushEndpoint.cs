@@ -21,22 +21,22 @@ public static class SendPushEndpoint
                 string.IsNullOrWhiteSpace(request.Title) ||
                 string.IsNullOrWhiteSpace(request.Body))
             {
-                return Results.BadRequest(new { error = "deviceToken, title, body는 모두 필수입니다." });
+                return ApiProblem.BadRequest("deviceToken, title and body are required.");
             }
 
             if (request.DeviceToken.Length > MaxDeviceTokenLength)
             {
-                return Results.BadRequest(new { error = $"deviceToken는 {MaxDeviceTokenLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"deviceToken must not exceed {MaxDeviceTokenLength} characters.");
             }
 
             if (request.Title.Length > MaxTitleLength)
             {
-                return Results.BadRequest(new { error = $"title은 {MaxTitleLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"title must not exceed {MaxTitleLength} characters.");
             }
 
             if (request.Body.Length > MaxBodyLength)
             {
-                return Results.BadRequest(new { error = $"body는 {MaxBodyLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"body must not exceed {MaxBodyLength} characters.");
             }
 
             // Whether a device token is still registered is only known to the push provider, so an

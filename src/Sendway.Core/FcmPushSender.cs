@@ -9,9 +9,9 @@ public sealed class FcmPushSender : IPushSender
 {
     private readonly ICredentialStore _credentialStore;
 
-    // 테넌트마다 다른 FCM 프로젝트 자격증명(오버라이드)을 쓸 수 있어, FirebaseApp을 프로세스당
-    // 하나로 캐시하면 두 번째 테넌트부터 첫 테넌트의 credential이 잘못 재사용된다. 테넌트별로
-    // Lazy<Task<FirebaseApp>>를 따로 캐시해 각 테넌트당 최초 1회만 생성한다.
+    // Tenants can each use their own FCM project credential (an override), so caching a single
+    // FirebaseApp per process would reuse the first tenant's credential for every later tenant.
+    // One Lazy<Task<FirebaseApp>> is cached per tenant and created on that tenant's first send.
     private readonly ConcurrentDictionary<Guid, Lazy<Task<FirebaseApp>>> _apps = new();
 
     public FcmPushSender(ICredentialStore credentialStore)
@@ -44,9 +44,9 @@ public sealed class FcmPushSender : IPushSender
 
         var fcmMessage = new Message
         {
-            // Message.Token: FCM이 fid로 전환 중이나(2026-06~), token은 마이그레이션 기간 동안
-            // 계속 동작하고 하위호환됨. 대부분의 실제 클라이언트가 아직 fid가 아닌 registration
-            // token을 발급받으므로, 실제 검증 없이 지금 Fid로 옮기지 않음.
+            // Message.Token: FCM is moving to fid, but registration tokens keep working through the
+            // migration period and most clients are still issued a token rather than a fid, so this
+            // stays on Token until a switch to Fid can be verified against real devices.
 #pragma warning disable CS0618
             Token = message.DeviceToken,
 #pragma warning restore CS0618
@@ -67,8 +67,8 @@ public sealed class FcmPushSender : IPushSender
         }
     }
 
-    // Task 5(SetTenantCredentialEndpoint)가 이 테넌트의 FCM 자격증명을 새로 등록/교체한 뒤 호출한다
-    // — 캐시된 FirebaseApp이 옛 자격증명을 계속 쓰는 걸 막기 위함. 다음 발송 시 재생성됨.
+    // Called after a tenant's FCM credential is set, replaced or removed, so the cached
+    // FirebaseApp doesn't keep using the old one. It is recreated on the next send.
     public void InvalidateTenant(Guid tenantId)
     {
         _apps.TryRemove(tenantId, out _);
@@ -84,9 +84,9 @@ public sealed class FcmPushSender : IPushSender
             throw new InvalidOperationException("FcmOptions.CredentialsJson is required.");
         }
 
-        // GoogleCredential.FromJson: 배포자가 암호화 저장소를 통해 직접 공급하는 credential이라
-        // "외부 소스 미검증" 위험 시나리오에 해당하지 않음. CredentialFactory 마이그레이션은
-        // 실제 자격증명으로 검증 가능해지면 진행.
+        // GoogleCredential.FromJson: the credential is supplied by the operator through the
+        // encrypted store, not taken from an untrusted source, which is the case the deprecation
+        // warns about. Moving to CredentialFactory waits until it can be verified with a real key.
 #pragma warning disable CS0618
         var credential = GoogleCredential.FromJson(options.CredentialsJson);
 #pragma warning restore CS0618

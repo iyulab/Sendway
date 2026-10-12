@@ -23,7 +23,7 @@ public static class TenantWebhookEndpoints
             if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var url) ||
                 (url.Scheme != Uri.UriSchemeHttps && url.Scheme != Uri.UriSchemeHttp))
             {
-                return Results.BadRequest(new { error = "url은 http 또는 https 절대 주소여야 합니다." });
+                return ApiProblem.BadRequest("url must be an absolute http or https URL.");
             }
 
             var registration = await endpoints.SetAsync(id, url, cancellationToken);

@@ -21,8 +21,9 @@ public sealed class AdminAuthFilter : IEndpointFilter
         return next(context);
     }
 
-    // 두 문자열을 SHA-256으로 고정 길이 해시한 뒤 비교한다 — 원문 길이가 다르면 비교 전에 바로
-    // 끝나버리는 일반적인 문자열 비교와 달리, 해시 길이가 항상 같아 길이 기반 타이밍 신호가 없다.
+    // Compares the SHA-256 hashes of the two strings rather than the strings themselves: an
+    // ordinary comparison returns early when lengths differ, while hashes are always the same
+    // length, so nothing about the key's length leaks through timing.
     private static bool SecureEquals(string a, string b)
     {
         var aHash = SHA256.HashData(Encoding.UTF8.GetBytes(a));

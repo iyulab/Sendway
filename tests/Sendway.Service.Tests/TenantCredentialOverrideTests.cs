@@ -242,7 +242,9 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
             new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("error", await response.Content.ReadAsStringAsync());
+        var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>();
+        Assert.Equal("invalid_request", problem!.Code);
+        Assert.False(string.IsNullOrWhiteSpace(problem.Detail));
 
         await using var db = await _factory.Services.GetRequiredService<IDbContextFactory<SendwayDbContext>>().CreateDbContextAsync();
         Assert.False(await db.ChannelCredentials.AnyAsync(c => c.TenantId == created.TenantId));

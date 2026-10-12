@@ -302,8 +302,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<ErrorResponse>();
-        Assert.Contains("not-an-email-address", body!.Error);
+        var body = await response.Content.ReadFromJsonAsync<ProblemResponse>();
+        Assert.Equal("invalid_recipient", body!.Code);
+        Assert.Contains("not-an-email-address", body.Detail);
         Assert.False(await TestDeliveryHadWorkAsync());
     }
 
@@ -374,7 +375,6 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     private Task<bool> TestDeliveryHadWorkAsync() =>
         _factory.Services.GetRequiredService<MessageDeliveryProcessor>().ProcessNextAsync();
 
-    private sealed record ErrorResponse(string Error);
 
     private sealed class FakeEmailSender : IEmailSender
     {

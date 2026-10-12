@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Sendway.Service.Endpoints;
 
 namespace Sendway.Service.Auth;
 
@@ -45,9 +46,10 @@ public sealed class TenantRateLimitFilter : IEndpointFilter
         {
             var retryAfterSeconds = Math.Max(1, (int)Math.Ceiling((window.Start.AddMinutes(1) - now).TotalSeconds));
             context.HttpContext.Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
-            return Results.Json(
-                new { error = "요청 한도를 초과했습니다." },
-                statusCode: StatusCodes.Status429TooManyRequests);
+            return ApiProblem.Create(
+                StatusCodes.Status429TooManyRequests,
+                ApiProblem.RateLimited,
+                $"The limit of {limit} requests per minute was exceeded. Retry after {retryAfterSeconds} seconds.");
         }
 
         window.Count++;

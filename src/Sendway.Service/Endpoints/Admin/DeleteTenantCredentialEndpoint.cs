@@ -40,7 +40,7 @@ public static class DeleteTenantCredentialEndpoint
                     }
                     return Results.NoContent();
                 default:
-                    return Results.BadRequest(new { error = $"unknown channel '{channel}'" });
+                    return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }
         });
     }

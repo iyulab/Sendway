@@ -10,7 +10,7 @@ public static class CreateTenantEndpoint
         {
             if (string.IsNullOrWhiteSpace(request.Name))
             {
-                return Results.BadRequest(new { error = "name은 필수입니다." });
+                return ApiProblem.BadRequest("name is required.");
             }
 
             var (plaintextKey, hash) = ApiKeyGenerator.Generate();

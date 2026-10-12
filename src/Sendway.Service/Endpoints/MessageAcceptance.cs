@@ -27,7 +27,7 @@ public static class MessageAcceptance
             idempotencyKey = keyValues.ToString();
             if (idempotencyKey.Length > MaxIdempotencyKeyLength)
             {
-                return Results.BadRequest(new { error = $"Idempotency-Key는 {MaxIdempotencyKeyLength}자를 초과할 수 없습니다." });
+                return ApiProblem.BadRequest($"Idempotency-Key must not exceed {MaxIdempotencyKeyLength} characters.");
             }
         }
 
@@ -39,7 +39,10 @@ public static class MessageAcceptance
 
         if (result.Outcome == EnqueueOutcome.KeyReused)
         {
-            return Results.UnprocessableEntity(new { error = "이 Idempotency-Key는 다른 내용의 요청에 이미 사용되었습니다." });
+            return ApiProblem.Create(
+                StatusCodes.Status422UnprocessableEntity,
+                ApiProblem.IdempotencyKeyReused,
+                "This Idempotency-Key was already used for a different request.");
         }
 
         if (result.Outcome == EnqueueOutcome.Accepted)
