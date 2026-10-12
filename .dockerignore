@@ -1,12 +1,20 @@
-**/bin/
-**/obj/
-**/.vs/
-tests/
-claudedocs/
-dev-docs/
-.git/
-.github/
-.claude/
-docs/
-**/appsettings.Development.json
+# The image is built from src/ only. Everything else stays out of the build context: it is not
+# needed, build outputs make the context large and slow to send, and local environment files or
+# notes must never travel with it.
+.git
+.github
+.claude
+.vs
+**/bin
+**/obj
+tests
+docs
+claudedocs
+dev-docs
+.env*
 *.md
+**/appsettings.Development.json
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/dp-keys
