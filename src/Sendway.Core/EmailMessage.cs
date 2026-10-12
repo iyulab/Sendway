@@ -32,10 +32,20 @@ public sealed class EmailMessage
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
         ArgumentException.ThrowIfNullOrWhiteSpace(body);
 
+        cc ??= [];
+        bcc ??= [];
+
+        // A message is accepted for delivery before any sender sees it, so a malformed address has
+        // to be rejected here (InvalidRecipientException) for the caller to hear about it at all.
+        foreach (var address in to.Concat(cc).Concat(bcc))
+        {
+            EmailAddressValidator.Validate(address);
+        }
+
         TenantId = tenantId;
         To = to;
-        Cc = cc ?? [];
-        Bcc = bcc ?? [];
+        Cc = cc;
+        Bcc = bcc;
         Subject = subject;
         Body = body;
         HtmlBody = htmlBody;

@@ -1,12 +1,13 @@
 using Sendway.Core;
 using Sendway.Service.Auth;
+using Sendway.Service.Delivery;
 
 namespace Sendway.Service.Endpoints;
 
 public static class SendEmailEndpoint
 {
-    // Bounds request size before it reaches SmtpEmailSender — protects the process from an
-    // oversized payload rather than validating email formatting (SmtpEmailSender/InvalidRecipientException
+    // Bounds request size before the message is stored — protects the process from an oversized
+    // payload rather than validating email formatting (EmailMessage/InvalidRecipientException
     // already own that). MaxAddressLength follows RFC 5321's 320-character maximum address length and
     // applies to every individual address across to/cc/bcc. Subject matches the common 200-char
     // convention for email subject lines; Body is generous for a transactional plain-text message
@@ -23,7 +24,7 @@ public static class SendEmailEndpoint
 
     public static void MapSendEmailEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IEmailSender sender, IMessageStatusStore statusStore, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+        group.MapPost("/email", async (SendEmailRequest request, HttpContext httpContext, IMessageOutbox outbox, DeliverySignal signal) =>
         {
             if (request.To is null || request.To.Count == 0 ||
                 string.IsNullOrWhiteSpace(request.Subject) ||
@@ -76,33 +77,25 @@ public static class SendEmailEndpoint
                 return Results.BadRequest(new { error = $"htmlBody는 {MaxBodyLength}자를 초과할 수 없습니다." });
             }
 
-            var tenant = httpContext.GetTenant();
-            var recipientSummary = BuildRecipientSummary(request.To, cc, bcc);
-
+            EmailMessage message;
             try
             {
-                var message = new EmailMessage(tenant.Id, request.To, request.Subject, request.Body, cc, bcc, htmlBody);
-                await sender.SendAsync(message, cancellationToken);
-                // statusStore writes intentionally use no cancellation token — the outcome should be
-                // durably recorded even if the caller disconnected before the response could be sent.
-                var id = await statusStore.RecordAsync(tenant.Id, "email", recipientSummary, MessageDeliveryStatus.Sent, error: null);
-                return Results.Ok(new SendMessageResponse(id));
+                message = new EmailMessage(httpContext.GetTenant().Id, request.To, request.Subject, request.Body, cc, bcc, htmlBody);
             }
             catch (InvalidRecipientException ex)
             {
-                var id = await statusStore.RecordAsync(tenant.Id, "email", recipientSummary, MessageDeliveryStatus.Failed, ex.Message);
-                return Results.BadRequest(new SendMessageFailureResponse(ex.Message, id));
+                // A malformed address is known before anything is sent, so it is refused here rather
+                // than accepted and reported as a failed delivery later.
+                return Results.BadRequest(new { error = ex.Message });
             }
-            catch (Exception ex) when (ex is not ArgumentException)
-            {
-                loggerFactory.CreateLogger(typeof(SendEmailEndpoint).FullName!)
-                    .LogError(ex, "Email send failed for tenant {TenantId}", tenant.Id);
-                var id = await statusStore.RecordAsync(tenant.Id, "email", recipientSummary, MessageDeliveryStatus.Failed, ex.Message);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: StatusCodes.Status500InternalServerError,
-                    extensions: new Dictionary<string, object?> { ["messageId"] = id });
-            }
+
+            return await MessageAcceptance.AcceptAsync(
+                httpContext,
+                outbox,
+                signal,
+                MessageChannels.Email,
+                BuildRecipientSummary(request.To, cc, bcc),
+                MessagePayload.Serialize(message));
         });
     }
 

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Sendway.Core;
 using Sendway.Service;
 using Sendway.Service.Auth;
+using Sendway.Service.Delivery;
 using Sendway.Service.Endpoints;
 using Sendway.Service.Endpoints.Admin;
 
@@ -43,7 +44,7 @@ builder.Services.AddDbContextFactory<SendwayDbContext>((services, options) =>
 builder.Services.AddSingleton<ICredentialStore, EncryptedCredentialStore>();
 builder.Services.AddSingleton<ITenantStore, TenantStore>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IMessageStatusStore, MessageStatusStore>();
+builder.Services.AddSingleton<IMessageOutbox, MessageOutbox>();
 
 builder.Services.AddSingleton<SmtpEmailSender>();
 builder.Services.AddSingleton<GraphEmailSender>();
@@ -54,13 +55,18 @@ builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 
 builder.Services.AddMemoryCache();
 
+builder.Services.AddOptions<MessageDeliveryOptions>().BindConfiguration("Sendway:Delivery");
+builder.Services.AddSingleton<MessageDeliveryProcessor>();
+builder.Services.AddSingleton<DeliverySignal>();
+
+// Order matters: the seeder migrates the schema, and the delivery worker must not claim before that.
 builder.Services.AddHostedService<ChannelCredentialSeeder>();
+builder.Services.AddHostedService<MessageDeliveryWorker>();
 
 var app = builder.Build();
 
 var messages = app.MapGroup("/messages")
     .AddEndpointFilter<TenantAuthFilter>()
-    .AddEndpointFilter<IdempotencyFilter>()
     .AddEndpointFilter<TenantRateLimitFilter>();
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();

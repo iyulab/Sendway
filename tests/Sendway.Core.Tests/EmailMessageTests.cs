@@ -69,4 +69,28 @@ public class EmailMessageTests
     {
         Assert.Throws<ArgumentException>(() => new EmailMessage(Guid.NewGuid(), ["user@example.com"], subject, body));
     }
+
+    [Theory]
+    [InlineData("not-an-email-address")]
+    [InlineData("plainaddress")]
+    [InlineData("user@")]
+    [InlineData("@example.com")]
+    public void Constructor_WithMalformedToAddress_ThrowsInvalidRecipientException(string to)
+    {
+        Assert.Throws<InvalidRecipientException>(() => new EmailMessage(Guid.NewGuid(), [to], "Subject", "Body"));
+    }
+
+    [Fact]
+    public void Constructor_WithMalformedCcAddress_ThrowsInvalidRecipientException()
+    {
+        Assert.Throws<InvalidRecipientException>(() =>
+            new EmailMessage(Guid.NewGuid(), ["user@example.com"], "Subject", "Body", cc: ["not-an-email-address"]));
+    }
+
+    [Fact]
+    public void Constructor_WithMalformedBccAddress_ThrowsInvalidRecipientException()
+    {
+        Assert.Throws<InvalidRecipientException>(() =>
+            new EmailMessage(Guid.NewGuid(), ["user@example.com"], "Subject", "Body", bcc: ["not-an-email-address"]));
+    }
 }

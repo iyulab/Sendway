@@ -60,8 +60,8 @@ public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Pr
         var factory = CreateFactory(requestsPerMinute: "2");
         var client = await CreateAuthenticatedClientAsync(factory);
 
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
 
         var thirdResponse = await SendAsync(client);
 
@@ -77,11 +77,11 @@ public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Pr
         var tenantAClient = await CreateAuthenticatedClientAsync(factory, "tenant-a");
         var tenantBClient = await CreateAuthenticatedClientAsync(factory, "tenant-b");
 
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(tenantAClient)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(tenantAClient)).StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await SendAsync(tenantAClient)).StatusCode);
 
         // Tenant B's own window is untouched by tenant A hitting its limit.
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(tenantBClient)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(tenantBClient)).StatusCode);
     }
 
     [Fact]
@@ -90,9 +90,9 @@ public class TenantRateLimitFilterTests : IClassFixture<WebApplicationFactory<Pr
         var factory = CreateFactory(requestsPerMinute: "1", enabled: "false");
         var client = await CreateAuthenticatedClientAsync(factory);
 
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await SendAsync(client)).StatusCode);
     }
 
     private sealed class NoopEmailSender : IEmailSender

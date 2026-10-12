@@ -40,22 +40,48 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         return Task.CompletedTask;
     }
 
-    private HttpClient CreateAuthenticatedClient(WebApplicationFactory<Program>? factory = null)
+    private HttpClient CreateAuthenticatedClient()
     {
-        var client = (factory ?? _factory).CreateClient();
+        var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
         return client;
     }
 
+    private static async Task<MessageStatusResponse> GetStatusAsync(HttpClient client, Guid id) =>
+        (await client.GetFromJsonAsync<MessageStatusResponse>($"/messages/{id}"))!;
+
     [Fact]
-    public async Task Post_WithValidRequest_Returns200()
+    public async Task Post_WithValidRequest_AcceptsWithoutSendingYet()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.Id);
+        Assert.Equal("Queued", body.Status);
+        Assert.Equal($"/messages/{body.Id}", response.Headers.Location?.OriginalString);
+        Assert.Null(_fakeEmailSender.LastMessage);
+
+        var status = await GetStatusAsync(client, body.Id);
+        Assert.Equal("Queued", status.Status);
+        Assert.Equal(0, status.Attempts);
+        Assert.Null(status.CompletedAt);
+    }
+
+    [Fact]
+    public async Task Post_WithValidRequest_IsDeliveredAndReportedAsSent()
     {
         var client = CreateAuthenticatedClient();
         var request = new SendEmailRequest(["user@example.com"], "Distinct Subject", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(_fakeEmailSender.LastMessage);
         Assert.Equal(["user@example.com"], _fakeEmailSender.LastMessage!.To);
         Assert.Empty(_fakeEmailSender.LastMessage!.Cc);
@@ -63,9 +89,13 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal("Distinct Subject", _fakeEmailSender.LastMessage!.Subject);
         Assert.Equal("Distinct Body", _fakeEmailSender.LastMessage!.Body);
 
-        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
-        Assert.NotNull(body);
-        Assert.NotEqual(Guid.Empty, body!.Id);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("email", status.Channel);
+        Assert.Equal("user@example.com", status.Recipient);
+        Assert.Equal("Sent", status.Status);
+        Assert.Null(status.Error);
+        Assert.Equal(1, status.Attempts);
+        Assert.NotNull(status.CompletedAt);
     }
 
     [Fact]
@@ -80,8 +110,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             Bcc: ["bcc1@example.com", "bcc2@example.com"]);
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.NotNull(_fakeEmailSender.LastMessage);
         Assert.Equal(["to1@example.com", "to2@example.com"], _fakeEmailSender.LastMessage!.To);
         Assert.Equal(["cc1@example.com"], _fakeEmailSender.LastMessage!.Cc);
@@ -95,8 +126,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", HtmlBody: "<p>Body</p>");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal("<p>Body</p>", _fakeEmailSender.LastMessage!.HtmlBody);
     }
 
@@ -107,8 +139,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Null(_fakeEmailSender.LastMessage!.HtmlBody);
     }
 
@@ -119,8 +152,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var request = new SendEmailRequest(["user@example.com"], "Subject", "Body", HtmlBody: "   ");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Null(_fakeEmailSender.LastMessage!.HtmlBody);
     }
 
@@ -133,7 +167,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null(_fakeEmailSender.LastMessage);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
     [Fact]
@@ -160,25 +194,6 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task Post_WithValidRequest_StatusIsQueryableAfterward()
-    {
-        var client = CreateAuthenticatedClient();
-        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
-
-        var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
-        var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
-
-        var statusResponse = await client.GetAsync($"/messages/{sendBody!.Id}");
-        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
-
-        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
-        Assert.Equal("email", status!.Channel);
-        Assert.Equal("user@example.com", status.Recipient);
-        Assert.Equal("Sent", status.Status);
-        Assert.Null(status.Error);
-    }
-
-    [Fact]
     public async Task Post_WithMultipleRecipients_StatusRecipientSummarizesToCcBcc()
     {
         var client = CreateAuthenticatedClient();
@@ -192,10 +207,9 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var sendResponse = await client.PostAsJsonAsync("/messages/email", request);
         var sendBody = await sendResponse.Content.ReadFromJsonAsync<SendMessageResponse>();
 
-        var statusResponse = await client.GetAsync($"/messages/{sendBody!.Id}");
-        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
+        var status = await GetStatusAsync(client, sendBody!.Id);
 
-        Assert.Equal("to1@example.com, to2@example.com; cc: cc1@example.com; bcc: bcc1@example.com", status!.Recipient);
+        Assert.Equal("to1@example.com, to2@example.com; cc: cc1@example.com; bcc: bcc1@example.com", status.Recipient);
     }
 
     [Fact]
@@ -229,7 +243,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null(_fakeEmailSender.LastMessage);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
     [Fact]
@@ -244,7 +258,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null(_fakeEmailSender.LastMessage);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
     [Fact]
@@ -256,7 +270,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null(_fakeEmailSender.LastMessage);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
     [Fact]
@@ -268,54 +282,66 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         var response = await client.PostAsJsonAsync("/messages/email", request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null(_fakeEmailSender.LastMessage);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
-    [Fact]
-    public async Task Post_WithMalformedEmailAddress_RecordsFailedStatusQueryableById()
+    [Theory]
+    [InlineData("not-an-email-address", null, null)]
+    [InlineData("user@example.com", "not-an-email-address", null)]
+    [InlineData("user@example.com", null, "not-an-email-address")]
+    public async Task Post_WithMalformedEmailAddress_IsRefusedInsteadOfAccepted(string to, string? cc, string? bcc)
     {
-        var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<IEmailSender>();
-                services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.InvalidRecipient));
-            });
-        });
-        var client = CreateAuthenticatedClient(factory);
-        var request = new SendEmailRequest(["not-an-email-address"], "Subject", "Body");
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(
+            [to],
+            "Subject",
+            "Body",
+            Cc: cc is null ? null : [cc],
+            Bcc: bcc is null ? null : [bcc]);
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
-        var body = await response.Content.ReadFromJsonAsync<SendMessageFailureResponse>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.NotNull(body);
-        Assert.NotEqual(Guid.Empty, body!.MessageId);
-
-        var statusResponse = await client.GetAsync($"/messages/{body.MessageId}");
-        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
-
-        Assert.Equal("Failed", status!.Status);
-        Assert.NotNull(status.Error);
+        var body = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.Contains("not-an-email-address", body!.Error);
+        Assert.False(await TestDeliveryHadWorkAsync());
     }
 
     [Fact]
-    public async Task Post_WhenSenderThrows_Returns500()
+    public async Task Post_WhenTheProviderRejectsTheRecipient_IsAcceptedThenReportedAsFailed()
     {
-        var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<IEmailSender>();
-                services.AddSingleton<IEmailSender>(new FakeEmailSender(failureMode: FailureMode.Other));
-            });
-        });
-        var client = CreateAuthenticatedClient(factory);
+        _fakeEmailSender.FailWith(new InvalidRecipientException("simulated rejected mailbox"));
+        var client = CreateAuthenticatedClient();
         var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/email", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("Failed", status.Status);
+        Assert.Equal("simulated rejected mailbox", status.Error);
+        Assert.NotNull(status.CompletedAt);
+    }
+
+    [Fact]
+    public async Task Post_WhenAnAttemptFailsTransiently_StaysQueuedWithTheErrorVisible()
+    {
+        _fakeEmailSender.FailWith(new InvalidOperationException("simulated SMTP failure"));
+        var client = CreateAuthenticatedClient();
+        var request = new SendEmailRequest(["user@example.com"], "Subject", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/email", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("Queued", status.Status);
+        Assert.Equal("simulated SMTP failure", status.Error);
+        Assert.Equal(1, status.Attempts);
+        Assert.Null(status.CompletedAt);
     }
 
     [Fact]
@@ -344,36 +370,29 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(HttpStatusCode.NotFound, statusResponse.StatusCode);
     }
 
-    private enum FailureMode
-    {
-        None,
-        InvalidRecipient,
-        Other
-    }
+    // True if a refused request nevertheless left something for the delivery worker to pick up.
+    private Task<bool> TestDeliveryHadWorkAsync() =>
+        _factory.Services.GetRequiredService<MessageDeliveryProcessor>().ProcessNextAsync();
+
+    private sealed record ErrorResponse(string Error);
 
     private sealed class FakeEmailSender : IEmailSender
     {
-        private readonly FailureMode _failureMode;
+        private Exception? _failure;
 
         public EmailMessage? LastMessage { get; private set; }
 
-        public FakeEmailSender(FailureMode failureMode = FailureMode.None)
-        {
-            _failureMode = failureMode;
-        }
+        public void FailWith(Exception failure) => _failure = failure;
 
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
-            switch (_failureMode)
+            if (_failure is not null)
             {
-                case FailureMode.InvalidRecipient:
-                    throw new InvalidRecipientException("simulated malformed email address");
-                case FailureMode.Other:
-                    throw new InvalidOperationException("simulated SMTP failure");
-                default:
-                    LastMessage = message;
-                    return Task.CompletedTask;
+                throw _failure;
             }
+
+            LastMessage = message;
+            return Task.CompletedTask;
         }
     }
 }

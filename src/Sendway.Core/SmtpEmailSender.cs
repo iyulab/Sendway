@@ -28,26 +28,23 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var (host, port) = SmtpProviderPresets.Resolve(options);
 
-        // A fresh SmtpClient per attempt — one that failed to connect/authenticate isn't assumed
-        // reusable on retry.
-        await RetryPolicy.ExecuteAsync(async () =>
+        // A fresh SmtpClient per send — one that failed to connect/authenticate isn't assumed
+        // reusable when the message is attempted again.
+        using var client = new SmtpClient();
+        await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
+
+        if (!string.IsNullOrEmpty(options.Username))
         {
-            using var client = new SmtpClient();
-            await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
-
-            if (!string.IsNullOrEmpty(options.Username))
+            if (string.IsNullOrEmpty(options.Password))
             {
-                if (string.IsNullOrEmpty(options.Password))
-                {
-                    throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
-                }
-
-                await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
+                throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
             }
 
-            await client.SendAsync(mimeMessage, cancellationToken);
-            await client.DisconnectAsync(true, cancellationToken);
-        }, cancellationToken: cancellationToken);
+            await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
+        }
+
+        await client.SendAsync(mimeMessage, cancellationToken);
+        await client.DisconnectAsync(true, cancellationToken);
     }
 
     // htmlBody absent → single plain-text part, byte-identical to pre-HTML-support wire format.

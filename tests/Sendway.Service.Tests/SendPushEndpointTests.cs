@@ -40,36 +40,53 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
         return Task.CompletedTask;
     }
 
-    private HttpClient CreateAuthenticatedClient(WebApplicationFactory<Program>? factory = null)
+    private HttpClient CreateAuthenticatedClient()
     {
-        var client = (factory ?? _factory).CreateClient();
+        var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
         return client;
     }
 
+    private static async Task<MessageStatusResponse> GetStatusAsync(HttpClient client, Guid id) =>
+        (await client.GetFromJsonAsync<MessageStatusResponse>($"/messages/{id}"))!;
+
     [Fact]
-    public async Task Post_WithValidRequest_Returns200()
+    public async Task Post_WithValidRequest_AcceptsWithoutSendingYet()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new SendPushRequest("device-token-123", "Title", "Body");
+
+        var response = await client.PostAsJsonAsync("/messages/push", request);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        Assert.NotNull(body);
+        Assert.NotEqual(Guid.Empty, body!.Id);
+        Assert.Equal("Queued", body.Status);
+        Assert.Equal($"/messages/{body.Id}", response.Headers.Location?.OriginalString);
+        Assert.Null(_fakePushSender.LastMessage);
+    }
+
+    [Fact]
+    public async Task Post_WithValidRequest_IsDeliveredAndReportedAsSent()
     {
         var client = CreateAuthenticatedClient();
         var request = new SendPushRequest("device-token-123", "Distinct Title", "Distinct Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(_fakePushSender.LastMessage);
         Assert.Equal("device-token-123", _fakePushSender.LastMessage!.DeviceToken);
         Assert.Equal("Distinct Title", _fakePushSender.LastMessage!.Title);
         Assert.Equal("Distinct Body", _fakePushSender.LastMessage!.Body);
 
-        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
-        Assert.NotNull(body);
-        Assert.NotEqual(Guid.Empty, body!.Id);
-
-        var statusResponse = await client.GetAsync($"/messages/{body.Id}");
-        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
-        Assert.Equal("push", status!.Channel);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("push", status.Channel);
         Assert.Equal("device-token-123", status.Recipient);
         Assert.Equal("Sent", status.Status);
+        Assert.Equal(1, status.Attempts);
     }
 
     [Fact]
@@ -101,6 +118,7 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
         var request = new SendPushRequest("device-token-123", new string('t', 201), "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Null(_fakePushSender.LastMessage);
@@ -113,108 +131,64 @@ public class SendPushEndpointTests : IClassFixture<WebApplicationFactory<Program
         var request = new SendPushRequest("device-token-123", "Title", new string('b', 4001));
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
+        await TestDelivery.DeliverPendingAsync(_factory);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Null(_fakePushSender.LastMessage);
     }
 
     [Fact]
-    public async Task Post_WhenTokenInvalid_Returns400()
+    public async Task Post_WhenTheProviderRejectsTheToken_IsAcceptedThenReportedAsFailed()
     {
-        var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<IPushSender>();
-                services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.InvalidRecipient));
-            });
-        });
-        var client = CreateAuthenticatedClient(factory);
+        _fakePushSender.FailWith(new InvalidRecipientException("simulated invalid device token"));
+        var client = CreateAuthenticatedClient();
         var request = new SendPushRequest("expired-token", "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("Failed", status.Status);
+        Assert.Equal("simulated invalid device token", status.Error);
+        Assert.Equal(1, status.Attempts);
     }
 
     [Fact]
-    public async Task Post_WhenTokenInvalid_RecordsFailedStatusQueryableById()
+    public async Task Post_WhenAnAttemptFailsTransiently_StaysQueuedWithTheErrorVisible()
     {
-        var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<IPushSender>();
-                services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.InvalidRecipient));
-            });
-        });
-        var client = CreateAuthenticatedClient(factory);
-        var request = new SendPushRequest("expired-token", "Title", "Body");
-
-        var response = await client.PostAsJsonAsync("/messages/push", request);
-        var body = await response.Content.ReadFromJsonAsync<SendFailureResponse>();
-
-        Assert.NotNull(body);
-        Assert.NotEqual(Guid.Empty, body!.MessageId);
-
-        var statusResponse = await client.GetAsync($"/messages/{body.MessageId}");
-        var status = await statusResponse.Content.ReadFromJsonAsync<MessageStatusResponse>();
-
-        Assert.Equal("Failed", status!.Status);
-        Assert.NotNull(status.Error);
-    }
-
-    private sealed record SendFailureResponse(string? Error, Guid MessageId);
-
-    [Fact]
-    public async Task Post_WhenSenderThrows_Returns500()
-    {
-        var factory = _factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<IPushSender>();
-                services.AddSingleton<IPushSender>(new FakePushSender(failureMode: FailureMode.Other));
-            });
-        });
-        var client = CreateAuthenticatedClient(factory);
+        _fakePushSender.FailWith(new InvalidOperationException("simulated FCM failure"));
+        var client = CreateAuthenticatedClient();
         var request = new SendPushRequest("device-token-123", "Title", "Body");
 
         var response = await client.PostAsJsonAsync("/messages/push", request);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
 
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-    }
-
-    private enum FailureMode
-    {
-        None,
-        InvalidRecipient,
-        Other
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var status = await GetStatusAsync(client, body!.Id);
+        Assert.Equal("Queued", status.Status);
+        Assert.Equal("simulated FCM failure", status.Error);
     }
 
     private sealed class FakePushSender : IPushSender
     {
-        private readonly FailureMode _failureMode;
+        private Exception? _failure;
 
         public PushMessage? LastMessage { get; private set; }
 
-        public FakePushSender(FailureMode failureMode = FailureMode.None)
-        {
-            _failureMode = failureMode;
-        }
+        public void FailWith(Exception failure) => _failure = failure;
 
         public Task SendAsync(PushMessage message, CancellationToken cancellationToken = default)
         {
-            switch (_failureMode)
+            if (_failure is not null)
             {
-                case FailureMode.InvalidRecipient:
-                    throw new InvalidRecipientException("simulated invalid device token");
-                case FailureMode.Other:
-                    throw new InvalidOperationException("simulated FCM failure");
-                default:
-                    LastMessage = message;
-                    return Task.CompletedTask;
+                throw _failure;
             }
+
+            LastMessage = message;
+            return Task.CompletedTask;
         }
     }
 }

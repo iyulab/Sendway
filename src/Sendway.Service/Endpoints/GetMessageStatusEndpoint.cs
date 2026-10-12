@@ -7,10 +7,10 @@ public static class GetMessageStatusEndpoint
 {
     public static void MapGetMessageStatusEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapGet("/{id:guid}", async (Guid id, HttpContext httpContext, IMessageStatusStore store) =>
+        group.MapGet("/{id:guid}", async (Guid id, HttpContext httpContext, IMessageOutbox outbox) =>
         {
             var tenant = httpContext.GetTenant();
-            var record = await store.GetAsync(id);
+            var record = await outbox.GetAsync(id);
 
             if (record is null || record.TenantId != tenant.Id)
             {
@@ -23,7 +23,9 @@ public static class GetMessageStatusEndpoint
                 record.Recipient,
                 record.Status.ToString(),
                 record.Error,
-                record.SentAt));
+                record.AttemptCount,
+                record.AcceptedAt,
+                record.CompletedAt));
         });
     }
 }

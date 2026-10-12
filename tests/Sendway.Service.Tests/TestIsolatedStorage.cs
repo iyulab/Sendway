@@ -20,7 +20,10 @@ internal sealed class TestIsolatedStorage : IDisposable
         {
             ["Sendway:DatabaseProvider"] = "Sqlite",
             ["ConnectionStrings:Sendway"] = $"Data Source={Path.Combine(_root, "sendway.db")}",
-            ["Sendway:DataProtectionKeyPath"] = Path.Combine(_root, "dp-keys")
+            ["Sendway:DataProtectionKeyPath"] = Path.Combine(_root, "dp-keys"),
+            // Delivery is driven explicitly by each test (TestDelivery) instead of by the
+            // background worker, so what a test observes doesn't depend on timing.
+            ["Sendway:Delivery:WorkerEnabled"] = "false"
         });
     }
 

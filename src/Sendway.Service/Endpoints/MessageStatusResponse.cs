@@ -6,4 +6,6 @@ public sealed record MessageStatusResponse(
     string Recipient,
     string Status,
     string? Error,
-    DateTimeOffset SentAt);
+    int Attempts,
+    DateTimeOffset AcceptedAt,
+    DateTimeOffset? CompletedAt);

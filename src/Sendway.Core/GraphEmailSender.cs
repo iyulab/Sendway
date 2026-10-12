@@ -21,39 +21,32 @@ public sealed class GraphEmailSender : IEmailSender
         _credentialStore = credentialStore;
     }
 
-    public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
-        return RetryPolicy.ExecuteAsync(async () =>
+        var lazyClient = _clients.GetOrAdd(
+            message.TenantId,
+            tenantId => new Lazy<Task<TenantGraphClient>>(
+                () => CreateClientAsync(tenantId, _credentialStore),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        TenantGraphClient tenantClient;
+        try
         {
-            var lazyClient = _clients.GetOrAdd(
-                message.TenantId,
-                tenantId => new Lazy<Task<TenantGraphClient>>(
-                    () => CreateClientAsync(tenantId, _credentialStore),
-                    LazyThreadSafetyMode.ExecutionAndPublication));
+            tenantClient = await lazyClient.Value;
+        }
+        catch
+        {
+            // A faulted creation must not stay cached forever — remove it so the next send
+            // retries instead of rethrowing the same stale failure until process restart.
+            _clients.TryRemove(new KeyValuePair<Guid, Lazy<Task<TenantGraphClient>>>(message.TenantId, lazyClient));
+            throw;
+        }
 
-            TenantGraphClient tenantClient;
-            try
-            {
-                tenantClient = await lazyClient.Value;
-            }
-            catch
-            {
-                // A faulted creation must not stay cached forever — remove it so the next send
-                // retries instead of rethrowing the same stale failure until process restart.
-                _clients.TryRemove(new KeyValuePair<Guid, Lazy<Task<TenantGraphClient>>>(message.TenantId, lazyClient));
-                throw;
-            }
+        var graphMessage = BuildGraphMessage(message);
 
-            // Validated (and any InvalidRecipientException thrown) before the Graph call itself —
-            // same "no partial send" guarantee SmtpEmailSender gives, and avoids having to guess at
-            // Graph's own error-code taxonomy for malformed recipients without a live tenant to
-            // verify it against.
-            var graphMessage = BuildGraphMessage(message);
-
-            await tenantClient.Client.Users[tenantClient.FromAddress].SendMail.PostAsync(
-                new SendMailPostRequestBody { Message = graphMessage, SaveToSentItems = false },
-                cancellationToken: cancellationToken);
-        }, cancellationToken: cancellationToken);
+        await tenantClient.Client.Users[tenantClient.FromAddress].SendMail.PostAsync(
+            new SendMailPostRequestBody { Message = graphMessage, SaveToSentItems = false },
+            cancellationToken: cancellationToken);
     }
 
     // SetTenantCredentialEndpoint calls this after registering/replacing this tenant's Graph
