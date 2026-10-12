@@ -1,6 +1,6 @@
 # The image is built from src/ only. Everything else stays out of the build context: it is not
-# needed, build outputs make the context large and slow to send, and local environment files or
-# notes must never travel with it.
+# needed there, and local-only files next to the sources (environment files, local databases,
+# key rings) must never travel with it.
 .git
 .github
 .claude
