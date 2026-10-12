@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The one integration test sends a real message over SMTP to this catcher (see README).
+    services:
+      smtp4dev:
+        image: rnwood/smtp4dev
+        ports:
+          - 2525:25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The projects target .NET 8; the newer SDK is what understands the .slnx solution file.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - run: dotnet build Sendway.slnx --configuration Release
+
+      - run: dotnet test Sendway.slnx --configuration Release --no-build
