@@ -41,14 +41,16 @@ public sealed class ChannelCredentialSeeder : IHostedService
             }
         }
 
+        // Configuration is the only way to supply the shared credentials, so it wins over what an
+        // earlier start stored — otherwise a changed value would never take effect after a restart.
         var smtp = _configuration.GetSection("Smtp").Get<SmtpOptions>();
-        if (smtp is not null && await _credentialStore.GetAsync<SmtpOptions>(null, ChannelCredentialNames.Smtp, cancellationToken) is null)
+        if (smtp is not null)
         {
             await _credentialStore.SetAsync(null, ChannelCredentialNames.Smtp, smtp, cancellationToken);
         }
 
         var fcm = _configuration.GetSection("Fcm").Get<FcmOptions>();
-        if (fcm is not null && await _credentialStore.GetAsync<FcmOptions>(null, ChannelCredentialNames.Fcm, cancellationToken) is null)
+        if (fcm is not null)
         {
             await _credentialStore.SetAsync(null, ChannelCredentialNames.Fcm, fcm, cancellationToken);
         }
