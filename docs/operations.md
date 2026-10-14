@@ -43,6 +43,7 @@ docker run -d --name sendway -p 8080:8080 \
 | `Sendway:Webhooks:MaxAttempts` · `AttemptTimeout` · `Concurrency` | `6` · `00:00:15` · `2` | 웹훅 전달의 같은 값들 |
 | `Sendway:Health:MaxOldestDue` | `00:05:00` | 가져갈 수 있는 항목이 이보다 오래 기다리면 `/health`가 `Unhealthy` |
 | `Sendway:Health:MaxFailedInLast24Hours` | 없음 | 정하면, 최근 24시간 실패가 이를 넘을 때 `/health`가 `Degraded`(없으면 실패 수는 보여 주기만 함) |
+| `Sendway:Health:MaxFailingFor` | `00:05:00` | 한 채널에서 마지막 성공 뒤 접수된 메시지들이 실패만 하며 이보다 오래 기다리면 `/health`가 `Degraded` |
 
 ### 여러 인스턴스
 
@@ -72,12 +73,13 @@ curl http://localhost:8080/health
 #      "database": {"status": "Healthy", "description": null},
 #      "messages": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0},
 #      "webhooks": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0},
-#      "channels": {"status": "Healthy", "description": null, "unsendable": {}}}}
+#      "channels": {"status": "Healthy", "description": null, "unsendable": {}, "failingSeconds": {}}}}
 ```
 
 - **발송이 멈추거나 밀림** — 가져갈 수 있는 항목이 `Sendway:Health:MaxOldestDue`(기본 5분)보다 오래 기다리면 그 대기열이 `Unhealthy`입니다. 재시도 시각을 기다리는 항목은 세지 않으므로, 정상이면 부하와 무관하게 0 근처입니다.
 - **실패가 늘어남** — `Sendway:Health:MaxFailedInLast24Hours`를 정하면 그 수를 넘을 때 `Degraded`입니다. 없는 주소처럼 정상적인 실패도 있어 얼마가 많은지는 배포마다 다르므로 기본으로는 판정하지 않습니다.
 - **보낼 수 없는 채널에 메시지가 있음** — 접수된 뒤 그 채널의 자격증명이 지워져(테넌트 값도 공용 값도 없음) 끝나지 않은 메시지가 남아 있으면 `channels`가 `Degraded`이고, `unsendable`이 채널별 건수를 보여 줍니다. 자격증명을 다시 등록하면 남은 재시도 안에 나갑니다.
+- **한 채널로 아무것도 나가지 않음** — 자격증명이 있어도 통하지 않으면(비밀번호 만료, 발신 주소 거부, 권한 회수 등) 메시지는 운영자가 고칠 수 있는 실패로 재시도를 기다리므로 위의 적체로 잡히지 않습니다. 그 채널에서 마지막으로 성공한 발송 뒤에 접수된 메시지들이 실패만 하며 `Sendway:Health:MaxFailingFor`(기본 5분 — 기본 재시도 간격이면 그동안 네 번 실패) 넘게 기다리면 `channels`가 `Degraded`이고, `failingSeconds`가 채널별로 얼마나 됐는지 보여 줍니다. 수신자 한 명 때문에 한 건만 막혀 있고 다른 메시지는 나가고 있으면 울리지 않습니다. 실패 이유(공급자의 응답)는 `/health`에 싣지 않으므로 그 메시지의 상태 조회나 로그에서 봅니다.
 - 경보는 `/health`가 `503`인 동안으로 걸면 충분합니다. 본문의 `description`이 어느 대기열이 왜 그런지 말합니다.
 - 대기열 수치는 인스턴스마다 5초 동안 공유됩니다 — 키 없이 자주 불러도 매번 집계하지 않습니다. 데이터베이스에 닿지 못한 이유(연결 문자열이 담길 수 있음)는 응답이 아니라 로그에만 남습니다.
 

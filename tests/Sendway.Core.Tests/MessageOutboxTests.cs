@@ -43,7 +43,7 @@ public class MessageOutboxTests : IAsyncLifetime
     {
         var result = await _outbox.EnqueueAsync(Submission());
 
-        var stored = await StoredAsync(result.Record.Id);
+        var stored = await StoredAsync(result.Record!.Id);
         Assert.Equal(EnqueueOutcome.Accepted, result.Outcome);
         Assert.Equal(DeliveryStatus.Queued, stored.Status);
         Assert.Equal(_tenantId, stored.TenantId);
@@ -59,7 +59,7 @@ public class MessageOutboxTests : IAsyncLifetime
     {
         var result = await _outbox.EnqueueAsync(Submission(payload: "one-time-code-482913"));
 
-        var stored = await StoredAsync(result.Record.Id);
+        var stored = await StoredAsync(result.Record!.Id);
         Assert.NotNull(stored.Payload);
         Assert.DoesNotContain("482913", stored.Payload);
     }
@@ -72,7 +72,7 @@ public class MessageOutboxTests : IAsyncLifetime
 
         Assert.Equal(EnqueueOutcome.Accepted, first.Outcome);
         Assert.Equal(EnqueueOutcome.Replayed, second.Outcome);
-        Assert.Equal(first.Record.Id, second.Record.Id);
+        Assert.Equal(first.Record!.Id, second.Record!.Id);
         Assert.Equal(1, await CountAsync());
     }
 
@@ -85,8 +85,8 @@ public class MessageOutboxTests : IAsyncLifetime
         var second = await _outbox.EnqueueAsync(Submission(key: "key-1"));
 
         Assert.Equal(EnqueueOutcome.Replayed, second.Outcome);
-        Assert.Equal(first.Record.Id, second.Record.Id);
-        Assert.Equal(DeliveryStatus.Sending, second.Record.Status);
+        Assert.Equal(first.Record!.Id, second.Record!.Id);
+        Assert.Equal(DeliveryStatus.Sending, second.Record!.Status);
         Assert.Equal(1, await CountAsync());
     }
 
@@ -109,7 +109,7 @@ public class MessageOutboxTests : IAsyncLifetime
 
         Assert.Equal(EnqueueOutcome.Accepted, first.Outcome);
         Assert.Equal(EnqueueOutcome.Accepted, second.Outcome);
-        Assert.NotEqual(first.Record.Id, second.Record.Id);
+        Assert.NotEqual(first.Record!.Id, second.Record!.Id);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class MessageOutboxTests : IAsyncLifetime
         var second = await _outbox.EnqueueAsync(Submission());
 
         Assert.Equal(EnqueueOutcome.Accepted, second.Outcome);
-        Assert.NotEqual(first.Record.Id, second.Record.Id);
+        Assert.NotEqual(first.Record!.Id, second.Record!.Id);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class MessageOutboxTests : IAsyncLifetime
         var second = await _outbox.EnqueueAsync(Submission(key: "key-1"));
 
         Assert.Equal(EnqueueOutcome.Accepted, second.Outcome);
-        Assert.NotEqual(first.Record.Id, second.Record.Id);
+        Assert.NotEqual(first.Record!.Id, second.Record!.Id);
         Assert.Equal(2, await CountAsync());
     }
 
@@ -141,7 +141,7 @@ public class MessageOutboxTests : IAsyncLifetime
         var results = await Task.WhenAll(
             Enumerable.Range(0, 8).Select(_ => Task.Run(() => _outbox.EnqueueAsync(Submission(key: "racing-key")))));
 
-        Assert.Single(results.Select(r => r.Record.Id).Distinct());
+        Assert.Single(results.Select(r => r.Record!.Id).Distinct());
         Assert.Single(results, r => r.Outcome == EnqueueOutcome.Accepted);
         Assert.Equal(1, await CountAsync());
     }
@@ -154,7 +154,7 @@ public class MessageOutboxTests : IAsyncLifetime
         var claimed = await _outbox.ClaimNextAsync(Lease);
 
         Assert.NotNull(claimed);
-        Assert.Equal(enqueued.Record.Id, claimed!.Id);
+        Assert.Equal(enqueued.Record!.Id, claimed!.Id);
         Assert.Equal(_tenantId, claimed.TenantId);
         Assert.Equal(MessageChannels.Email, claimed.Channel);
         Assert.Equal("the payload", _outbox.ReadPayload(claimed));
@@ -189,7 +189,7 @@ public class MessageOutboxTests : IAsyncLifetime
 
         var claimed = await _outbox.ClaimNextAsync(Lease);
 
-        Assert.Equal(older.Record.Id, claimed!.Id);
+        Assert.Equal(older.Record!.Id, claimed!.Id);
     }
 
     [Fact]
@@ -336,7 +336,7 @@ public class MessageOutboxTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CountUnsendable_CountsUnfinishedMessagesWhoseCredentialIsGone_PerChannel()
+    public async Task ChannelStates_CountUnfinishedMessagesWhoseCredentialIsGone_PerChannel()
     {
         var sent = await _outbox.EnqueueAsync(Submission(payload: "sent"));
         await _outbox.EnqueueAsync(Submission(payload: "waiting 1"));
@@ -346,11 +346,55 @@ public class MessageOutboxTests : IAsyncLifetime
         await _outbox.MarkSentAsync(claim);
         Assert.Equal(sent.Record!.Id, claim.Id);
 
-        Assert.Empty(await _outbox.CountUnsendableAsync());
+        Assert.Empty(await _outbox.GetChannelStatesAsync());
 
         await SetCredentialsAsync((Guid.Empty, ChannelCredentialNames.Fcm));
 
-        var unsendable = await _outbox.CountUnsendableAsync();
-        Assert.Equal(new Dictionary<string, int> { [MessageChannels.Email] = 2 }, unsendable);
+        var state = Assert.Single(await _outbox.GetChannelStatesAsync());
+        Assert.Equal(new ChannelDeliveryState(MessageChannels.Email, 2, null), state);
+    }
+
+    private async Task FailOnceAsync()
+    {
+        var claim = (await _outbox.ClaimNextAsync(Lease))!;
+        await _outbox.ScheduleRetryAsync(claim, "535 authentication failed", TimeSpan.FromMinutes(30));
+    }
+
+    [Fact]
+    public async Task ChannelStates_WhenMessagesKeepFailingWithNothingSent_SayForHowLong()
+    {
+        await _outbox.EnqueueAsync(Submission(payload: "first"));
+        await FailOnceAsync();
+        _time.Advance(TimeSpan.FromMinutes(2));
+        await _outbox.EnqueueAsync(Submission(payload: "second"));
+        await FailOnceAsync();
+        _time.Advance(TimeSpan.FromMinutes(1));
+
+        var state = Assert.Single(await _outbox.GetChannelStatesAsync());
+
+        Assert.Equal(MessageChannels.Email, state.Channel);
+        Assert.Equal(TimeSpan.FromMinutes(3), state.FailingFor);
+    }
+
+    // One message stuck on its own recipient while later messages go out is not a failing channel.
+    [Fact]
+    public async Task ChannelStates_IgnoreAFailingMessageOnceALaterOneWasSent()
+    {
+        await _outbox.EnqueueAsync(Submission(payload: "stuck"));
+        await FailOnceAsync();
+        _time.Advance(TimeSpan.FromMinutes(10));
+        await _outbox.EnqueueAsync(Submission(payload: "fine"));
+        await _outbox.MarkSentAsync((await _outbox.ClaimNextAsync(Lease))!);
+
+        Assert.Empty(await _outbox.GetChannelStatesAsync());
+    }
+
+    [Fact]
+    public async Task ChannelStates_IgnoreMessagesNotYetTried()
+    {
+        await _outbox.EnqueueAsync(Submission());
+        _time.Advance(TimeSpan.FromMinutes(10));
+
+        Assert.Empty(await _outbox.GetChannelStatesAsync());
     }
 }

@@ -44,7 +44,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var message = new EmailMessage(_tenantId, ["user@example.com"], "Subject", "Body");
         var result = await _outbox.EnqueueAsync(
             new MessageSubmission(_tenantId, MessageChannels.Email, "user@example.com", MessagePayload.Serialize(message)));
-        return result.Record.Id;
+        return result.Record!.Id;
     }
 
     private async Task<MessageRecord> StoredAsync(Guid id) => (await _outbox.GetAsync(id))!;
@@ -81,7 +81,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal("The Body", sent.Body);
         Assert.Equal("<p>The Body</p>", sent.HtmlBody);
 
-        var stored = await StoredAsync(enqueued.Record.Id);
+        var stored = await StoredAsync(enqueued.Record!.Id);
         Assert.Equal(DeliveryStatus.Sent, stored.Status);
         Assert.Equal(1, stored.AttemptCount);
     }
@@ -100,7 +100,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal("device-token-123", sent.DeviceToken);
         Assert.Equal("The Title", sent.Title);
         Assert.Equal("The Body", sent.Body);
-        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
+        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record!.Id)).Status);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal(_tenantId, sent.TenantId);
         Assert.Equal("+821012345678", sent.To.ToString());
         Assert.Equal("The Body", sent.Body);
-        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
+        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record!.Id)).Status);
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
 
         await _processor.ProcessNextAsync();
 
-        var stored = await StoredAsync(enqueued.Record.Id);
+        var stored = await StoredAsync(enqueued.Record!.Id);
         Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("the recipient opted out", stored.Error);
         Assert.Equal(1, stored.AttemptCount);

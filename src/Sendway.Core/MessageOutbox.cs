@@ -149,9 +149,10 @@ public sealed class MessageOutbox : IMessageOutbox
         return await _queue.GetStatsAsync(db, cancellationToken);
     }
 
-    public async Task<IReadOnlyDictionary<string, int>> CountUnsendableAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ChannelDeliveryState>> GetChannelStatesAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var now = _timeProvider.GetUtcNow();
 
         var unfinished = await db.MessageRecords
             .AsNoTracking()
@@ -169,7 +170,41 @@ public sealed class MessageOutbox : IMessageOutbox
             }
         }
 
-        return unsendable;
+        // A message that has failed and waits to be tried again, or is being tried again now.
+        var retrying = await db.MessageRecords
+            .AsNoTracking()
+            .Where(m => (m.Status == DeliveryStatus.Queued && m.AttemptCount >= 1) ||
+                        (m.Status == DeliveryStatus.Sending && m.AttemptCount >= 2))
+            .Select(m => new { m.Channel, m.AcceptedAt })
+            .ToListAsync(cancellationToken);
+
+        var failingFor = new Dictionary<string, TimeSpan>();
+        foreach (var channel in retrying.Select(m => m.Channel).Distinct())
+        {
+            var lastSent = await db.MessageRecords
+                .Where(m => m.Status == DeliveryStatus.Sent && m.Channel == channel)
+                .MaxAsync(m => m.CompletedAt, cancellationToken);
+
+            // Messages accepted after the last success that went out are what tells whether the channel
+            // works now; an older one stuck on its own recipient while later ones get through does not.
+            var oldestSinceSuccess = retrying
+                .Where(m => m.Channel == channel && (lastSent is null || m.AcceptedAt > lastSent))
+                .Select(m => (DateTimeOffset?)m.AcceptedAt)
+                .Min();
+
+            if (oldestSinceSuccess is { } since)
+            {
+                failingFor[channel] = now - since;
+            }
+        }
+
+        return unsendable.Keys.Union(failingFor.Keys)
+            .Order()
+            .Select(channel => new ChannelDeliveryState(
+                channel,
+                unsendable.GetValueOrDefault(channel),
+                failingFor.TryGetValue(channel, out var age) ? age : null))
+            .ToList();
     }
 
     // Whether a credential that lets the tenant send on the channel is stored — its own or the shared

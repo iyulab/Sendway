@@ -19,6 +19,12 @@ public sealed class HealthOptions
     // some failures (an address that does not exist) are normal, and how many is too many depends on
     // the deployment.
     public int? MaxFailedInLast24Hours { get; set; }
+
+    // A channel on which nothing has got through for this long while messages accepted since its last
+    // success keep failing — a credential that stopped working, a provider refusing everything. With
+    // the default retry delays (5 s, 30 s, 3 min) such a message has failed four times by 5 minutes;
+    // a single message stuck on its own recipient does not count once anything else is sent.
+    public TimeSpan MaxFailingFor { get; set; } = TimeSpan.FromMinutes(5);
 }
 
 // Health endpoints without authentication, for probes and external monitoring. They say whether the
@@ -58,7 +64,8 @@ public static class SendwayHealth
             .Add(new HealthCheckRegistration(
                 "channels",
                 sp => new ChannelsHealthCheck(
-                    ct => sp.GetRequiredService<SharedQueueStats>().GetAsync("unsendable", sp.GetRequiredService<IMessageOutbox>().CountUnsendableAsync, ct)),
+                    ct => sp.GetRequiredService<SharedQueueStats>().GetAsync("channels", sp.GetRequiredService<IMessageOutbox>().GetChannelStatesAsync, ct),
+                    sp.GetRequiredService<IOptions<HealthOptions>>().Value),
                 failureStatus: null,
                 tags: null,
                 timeout: CheckTimeout));
@@ -180,24 +187,39 @@ public sealed class SharedQueueStats(TimeProvider timeProvider)
     }
 }
 
-// Messages waiting on a channel that no stored credential lets their tenant send on — a credential
-// deleted after they were accepted. They would only be retried until they fail, so the operator is
-// told now. Reports a count per channel, never which tenant.
-public sealed class ChannelsHealthCheck(Func<CancellationToken, Task<IReadOnlyDictionary<string, int>>> countUnsendable) : IHealthCheck
+// Whether each channel is getting messages through. Degraded when messages wait on a channel no
+// stored credential serves (one deleted after they were accepted), or when nothing has been sent on a
+// channel for longer than MaxFailingFor while the messages accepted since keep failing. Reports
+// counts and ages per channel only — never a tenant, never a provider's error text.
+public sealed class ChannelsHealthCheck(
+    Func<CancellationToken, Task<IReadOnlyList<ChannelDeliveryState>>> getStates,
+    HealthOptions options) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var unsendable = await countUnsendable(cancellationToken);
-        var data = new Dictionary<string, object> { ["unsendable"] = unsendable };
+        var states = await getStates(cancellationToken);
 
-        if (unsendable.Count == 0)
+        var unsendable = states.Where(s => s.Unsendable > 0).ToDictionary(s => s.Channel, s => s.Unsendable);
+        var failing = states
+            .Where(s => s.FailingFor > options.MaxFailingFor)
+            .ToDictionary(s => s.Channel, s => Math.Round(s.FailingFor!.Value.TotalSeconds, 1));
+        var data = new Dictionary<string, object> { ["unsendable"] = unsendable, ["failingSeconds"] = failing };
+
+        var problems = new List<string>();
+        if (unsendable.Count > 0)
         {
-            return HealthCheckResult.Healthy(data: data);
+            problems.Add("Messages are waiting on channels with no credential to send them: " +
+                string.Join(", ", unsendable.Select(c => $"{c.Key} ({c.Value})")) + ".");
         }
 
-        var channels = string.Join(", ", unsendable.Select(c => $"{c.Key} ({c.Value})"));
-        return HealthCheckResult.Degraded(
-            $"Messages are waiting on channels with no credential to send them: {channels}.",
-            data: data);
+        if (failing.Count > 0)
+        {
+            problems.Add($"Nothing has been sent for over {options.MaxFailingFor.TotalMinutes:0.#} minutes while messages keep failing on: " +
+                string.Join(", ", failing.Keys) + ".");
+        }
+
+        return problems.Count == 0
+            ? HealthCheckResult.Healthy(data: data)
+            : HealthCheckResult.Degraded(string.Join(" ", problems), data: data);
     }
 }

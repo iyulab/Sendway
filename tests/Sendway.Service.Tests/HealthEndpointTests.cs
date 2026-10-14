@@ -42,7 +42,13 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
         return (response.StatusCode, body);
     }
 
-    private static async Task AddMessageAsync(WebApplicationFactory<Program> factory, DeliveryStatus status, DateTimeOffset nextAttemptAt, DateTimeOffset? completedAt = null)
+    private static async Task AddMessageAsync(
+        WebApplicationFactory<Program> factory,
+        DeliveryStatus status,
+        DateTimeOffset nextAttemptAt,
+        DateTimeOffset? completedAt = null,
+        int attemptCount = 0,
+        DateTimeOffset? acceptedAt = null)
     {
         await using var db = await factory.Services.GetRequiredService<IDbContextFactory<SendwayDbContext>>().CreateDbContextAsync();
         db.MessageRecords.Add(new MessageRecord
@@ -51,8 +57,9 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
             TenantId = Guid.NewGuid(),
             Channel = MessageChannels.Email,
             Recipient = "user@example.com",
-            AcceptedAt = nextAttemptAt,
+            AcceptedAt = acceptedAt ?? nextAttemptAt,
             Status = status,
+            AttemptCount = attemptCount,
             NextAttemptAt = status is DeliveryStatus.Queued or DeliveryStatus.Sending ? nextAttemptAt : null,
             CompletedAt = completedAt
         });
@@ -194,6 +201,58 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal("Healthy", body.GetProperty("checks").GetProperty("channels").GetProperty("status").GetString());
+    }
+
+    private WebApplicationFactory<Program> WithSharedSmtp() => WithSettings(new()
+    {
+        ["Smtp:Host"] = "127.0.0.1",
+        ["Smtp:FromAddress"] = "sender@example.com"
+    });
+
+    // A credential that stopped working: every message accepted since the last success keeps failing.
+    // Waiting for retries, they are not a backlog, so only this check notices.
+    [Fact]
+    public async Task AChannelWhereNothingGetsThroughForTooLong_Degrades_WithoutTheProvidersError()
+    {
+        var factory = WithSharedSmtp();
+        var now = DateTimeOffset.UtcNow;
+        await AddMessageAsync(factory, DeliveryStatus.Sent, now.AddMinutes(-30), completedAt: now.AddMinutes(-20), attemptCount: 1, acceptedAt: now.AddMinutes(-30));
+        await AddMessageAsync(factory, DeliveryStatus.Queued, now.AddMinutes(8), attemptCount: 3, acceptedAt: now.AddMinutes(-10));
+
+        var (status, body) = await GetAsync(factory.CreateClient(), "/health");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, status);
+        var channels = body.GetProperty("checks").GetProperty("channels");
+        Assert.Equal("Degraded", channels.GetProperty("status").GetString());
+        Assert.InRange(channels.GetProperty("failingSeconds").GetProperty("email").GetDouble(), 595, 700);
+        Assert.Contains("email", channels.GetProperty("description").GetString());
+        Assert.Equal("Healthy", body.GetProperty("checks").GetProperty("messages").GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task AFailingMessage_IsNotAFailingChannel_OnceALaterOneWasSent()
+    {
+        var factory = WithSharedSmtp();
+        var now = DateTimeOffset.UtcNow;
+        await AddMessageAsync(factory, DeliveryStatus.Queued, now.AddMinutes(8), attemptCount: 3, acceptedAt: now.AddMinutes(-10));
+        await AddMessageAsync(factory, DeliveryStatus.Sent, now.AddMinutes(-2), completedAt: now.AddMinutes(-2), attemptCount: 1, acceptedAt: now.AddMinutes(-2));
+
+        var (status, _) = await GetAsync(factory.CreateClient(), "/health");
+
+        Assert.Equal(HttpStatusCode.OK, status);
+    }
+
+    [Fact]
+    public async Task FailuresShorterThanTheLimit_AreNotJudgedYet()
+    {
+        var factory = WithSharedSmtp();
+        var now = DateTimeOffset.UtcNow;
+        await AddMessageAsync(factory, DeliveryStatus.Queued, now.AddMinutes(1), attemptCount: 2, acceptedAt: now.AddMinutes(-2));
+
+        var (status, body) = await GetAsync(factory.CreateClient(), "/health");
+
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Empty(body.GetProperty("checks").GetProperty("channels").GetProperty("failingSeconds").EnumerateObject());
     }
 
     [Fact]

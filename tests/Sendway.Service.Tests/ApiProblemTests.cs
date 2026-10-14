@@ -29,6 +29,7 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {
+            builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((context, configuration) =>
             {
                 _storage.Apply(context, configuration);
@@ -262,8 +263,8 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
         public Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new QueueStats(0, 0, 0, null));
 
-        public Task<IReadOnlyDictionary<string, int>> CountUnsendableAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>());
+        public Task<IReadOnlyList<ChannelDeliveryState>> GetChannelStatesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ChannelDeliveryState>>([]);
     }
 
     private sealed class NoopEmailSender : IEmailSender

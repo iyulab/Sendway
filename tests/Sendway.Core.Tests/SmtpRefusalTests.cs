@@ -8,11 +8,13 @@ namespace Sendway.Core.Tests;
 // and MessageRejectedException end the message, anything else is tried again.
 public class SmtpRefusalTests
 {
-    private static SmtpEmailSender SenderFor(TestSmtpServer server, string from = "sender@example.com") =>
+    private static SmtpEmailSender SenderFor(TestSmtpServer server, string from = "sender@example.com", string? password = null) =>
         new(new SingleCredentialStore(ChannelCredentialNames.Smtp, new SmtpOptions
         {
             Host = "127.0.0.1",
             Port = server.Port,
+            Username = password is null ? null : "user",
+            Password = password,
             FromAddress = from
         }));
 
@@ -65,6 +67,17 @@ public class SmtpRefusalTests
         var exception = await Assert.ThrowsAsync<SmtpCommandException>(() => sender.SendAsync(Message("user@example.com")));
 
         Assert.Equal(SmtpErrorCode.SenderNotAccepted, exception.ErrorCode);
+    }
+
+    // A refused login is the account's problem, not the message's: an operator fixes the credential and
+    // the waiting messages go out on their next attempt.
+    [Fact]
+    public async Task ARefusedLogin_IsLeftToBeRetried()
+    {
+        await using var server = new TestSmtpServer();
+        using var sender = SenderFor(server, password: "wrong");
+
+        await Assert.ThrowsAsync<MailKit.Security.AuthenticationException>(() => sender.SendAsync(Message("user@example.com")));
     }
 
     // The recipients of one message share one transaction: one refused address ends it for all of them.

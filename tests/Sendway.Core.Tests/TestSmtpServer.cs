@@ -8,8 +8,8 @@ namespace Sendway.Core.Tests;
 // sessions were opened and how many were open at once. The local part of an address picks a refusal:
 // a recipient starting with one of RecipientReplies' keys gets that reply to RCPT, a recipient starting
 // with "spam" is accepted but the message is refused after DATA, and a sender starting with
-// "badsender" is refused at MAIL. With closeAfterEachMessage it hangs up after every delivered message,
-// the way a server that drops idle or used connections would.
+// "badsender" is refused at MAIL; the password "wrong" is refused at AUTH. With closeAfterEachMessage
+// it hangs up after every delivered message, the way a server that drops idle or used connections would.
 internal sealed class TestSmtpServer : IAsyncDisposable
 {
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
@@ -116,6 +116,10 @@ internal sealed class TestSmtpServer : IAsyncDisposable
                         await writer.WriteLineAsync("250-test");
                         await writer.WriteLineAsync("250 AUTH PLAIN");
                     }
+                    else if (verb == "AUTH" && IsWrongPassword(line))
+                    {
+                        await writer.WriteLineAsync("535 5.7.8 authentication credentials invalid");
+                    }
                     else if (verb == "AUTH")
                     {
                         await writer.WriteLineAsync("235 2.7.0 accepted");
@@ -156,6 +160,25 @@ internal sealed class TestSmtpServer : IAsyncDisposable
         finally
         {
             Interlocked.Decrement(ref _open);
+        }
+    }
+
+    // AUTH PLAIN carries "\0user\0password" in base64 on the same line.
+    private static bool IsWrongPassword(string line)
+    {
+        var parts = line.Split(' ');
+        if (parts.Length < 3)
+        {
+            return false;
+        }
+
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(parts[2])).EndsWith("\0wrong", StringComparison.Ordinal);
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 
