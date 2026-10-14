@@ -11,7 +11,7 @@ Sendway가 쓰는 비밀값은 **설정(환경변수·설정 파일)으로 주�
 | 관리자 키 | 설정 `Sendway:AdminApiKey` | 값을 바꾸고 재시작 | 재시작 |
 | 데이터베이스 비밀번호 | 설정 `ConnectionStrings:Sendway` | 아래 순서 | 데이터베이스에서 바꾼 즉시 |
 | 공용 채널 자격증명 | 설정 `Smtp:*`, `Fcm:*`, `Solapi:*` — 또는 데이터베이스(암호화) | 설정에 있으면 값을 바꾸고 재시작, 없으면 `PUT /admin/credentials/{channel}` | 재시작 / 다음 발송 |
-| 테넌트 API 키 | 데이터베이스(해시) | `POST /admin/tenants/{id}/rotate-key` | 즉시 |
+| 테넌트 API 키 | 데이터베이스(해시) | `POST /admin/tenants/{id}/rotate-key` | 즉시, 또는 지정한 겹침이 끝날 때 |
 | 테넌트별 채널 자격증명 | 데이터베이스(암호화) | `PUT /admin/tenants/{id}/credentials/{channel}` | 다음 발송 |
 | 웹훅 서명 비밀값 | 데이터베이스(암호화) | `PUT /admin/tenants/{id}/webhook`으로 다시 등록 | 다음 전달 |
 
@@ -34,7 +34,19 @@ Sendway가 쓰는 비밀값은 **설정(환경변수·설정 파일)으로 주�
 
 재시작 없이 바뀝니다.
 
-- **테넌트 API 키** — `rotate-key`의 응답에 새 키가 한 번만 실려 옵니다. **옛 키는 그 순간부터 `401`이고 두 키가 함께 통하는 구간이 없습니다.** 그 테넌트의 서비스가 운영 중이면 새 키를 곧바로 배포할 준비를 해 두고 교체합니다 — 그 사이 그 서비스가 보낸 요청은 거절됩니다.
+- **테넌트 API 키** — `rotate-key`의 응답에 새 키가 한 번만 실려 옵니다. 본문 없이 부르면 **옛 키는 그 순간부터 `401`입니다** — 키가 새어 나갔을 때 쓰는 방식입니다. 운영 중인 서비스의 키를 계획해서 바꿀 때는 겹침을 지정해, 그 서비스가 새 키로 옮기는 동안 두 키가 함께 통하게 합니다.
+
+  ```bash
+  # 옛 키를 24시간 더 살린다(0~604800초, 최대 7일)
+  curl -X POST http://localhost:8080/admin/tenants/<tenantId>/rotate-key \
+    -H "X-Admin-Key: <관리자 키>" -H "Content-Type: application/json" -d '{"previousKeyValidForSeconds": 86400}'
+  # → {"apiKey": "sw_…", "previousKeyExpiresAt": "…"}
+
+  # 그 서비스가 새 키로 옮긴 것을 확인하면 겹침을 바로 끝낸다
+  curl -X DELETE http://localhost:8080/admin/tenants/<tenantId>/previous-key -H "X-Admin-Key: <관리자 키>"
+  ```
+
+  겹침 동안 옛 키로 온 요청은 그대로 처리되고, 응답에 `Api-Key-Expires` 헤더(옛 키가 멈추는 시각)가 붙으며 서비스 로그에 경고가 남습니다 — 로그에서 그 테넌트의 경고가 사라지면 옮긴 것입니다. `GET /admin/tenants`의 `previousKeyExpiresAt`은 겹침이 진행 중일 때만 값이 있습니다. 겹침 중에 다시 교체하면 그때의 키가 새 「옛 키」가 되고, 그 전의 옛 키는 즉시 멈춥니다(옛 키는 하나). 비활성화한 테넌트는 어느 키로도 통하지 않습니다.
 - **공용 채널 자격증명** — 설정에 그 채널 항목이 없을 때, `PUT /admin/credentials/{channel}`(`smtp`·`fcm`·`solapi`)로 등록·교체하고 `DELETE`로 지웁니다. 테넌트별 자격증명과 같은 형식이고, 재시작 뒤에도 남습니다. 설정에 그 항목이 있으면 `409`(`managed_by_configuration`)로 거절합니다 — 그대로 받아 두면 다음 재시작 때 설정값으로 되돌아가기 때문입니다. `GET /admin/credentials`는 채널마다 값이 어디서 왔는지(`configuration`·`api`, 없으면 `null`)를 알려 주며 값 자체는 돌려주지 않습니다. `email-graph`는 공용 값을 두지 않습니다 — 공용으로 두면 모든 테넌트의 메일이 Graph로 나갑니다.
 - **테넌트별 채널 자격증명** — 같은 채널에 다시 `PUT`하면 교체되고, 다음 발송부터 새 값을 씁니다. 재시도를 기다리던 메시지도 새 값으로 나갑니다.
 - **웹훅 서명 비밀값** — 엔드포인트를 다시 등록하면 새 비밀값이 발급됩니다. 전달을 기다리던 이벤트도 새 비밀값으로 서명되므로, 받는 쪽의 비밀값을 함께 바꿉니다.
@@ -51,7 +63,8 @@ Sendway가 쓰는 비밀값은 **설정(환경변수·설정 파일)으로 주�
 |---|---|---|
 | `tenant.created` | 테넌트 생성 | 테넌트 이름 |
 | `tenant.deactivated` · `tenant.reactivated` | 비활성화 · 재활성화 | — |
-| `tenant.key_rotated` | 테넌트 키 교체 | — |
+| `tenant.key_rotated` | 테넌트 키 교체 | 겹침을 지정했으면 옛 키가 멈추는 시각 |
+| `tenant.previous_key_revoked` | 겹침을 일찍 끝냄 | — |
 | `credential.set` · `credential.deleted` | 채널 자격증명 등록·교체 · 삭제(테넌트별, 또는 `tenantId`가 비어 있으면 공용) | 채널 |
 | `webhook.set` · `webhook.deleted` | 웹훅 등록 · 해제 | 등록한 URL |
 

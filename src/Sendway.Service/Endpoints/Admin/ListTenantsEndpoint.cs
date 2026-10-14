@@ -6,11 +6,12 @@ public static class ListTenantsEndpoint
 {
     public static void MapListTenantsEndpoint(this IEndpointRouteBuilder group)
     {
-        group.MapGet("/tenants", async (ITenantStore tenantStore, CancellationToken cancellationToken) =>
+        group.MapGet("/tenants", async (ITenantStore tenantStore, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             var tenants = await tenantStore.ListAsync(cancellationToken);
+            var now = timeProvider.GetUtcNow();
 
-            return Results.Ok(tenants.Select(t => new TenantResponse(t.Id, t.Name, t.Active, t.CreatedAt)));
+            return Results.Ok(tenants.Select(t => new TenantResponse(t.Id, t.Name, t.Active, t.CreatedAt, t.PreviousApiKeyExpiryAt(now))));
         });
     }
 }

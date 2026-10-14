@@ -151,10 +151,18 @@ namespace Sendway.Core.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("PreviousApiKeyExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PreviousApiKeyHash")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ApiKeyHash")
                         .IsUnique();
+
+                    b.HasIndex("PreviousApiKeyHash");
 
                     b.ToTable("Tenants");
                 });

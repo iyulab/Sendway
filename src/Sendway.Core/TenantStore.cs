@@ -37,11 +37,17 @@ public sealed class TenantStore : ITenantStore
         return await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
     }
 
-    public async Task<Tenant?> GetByApiKeyHashAsync(string apiKeyHash, CancellationToken cancellationToken = default)
+    public async Task<TenantKeyMatch?> FindByApiKeyHashAsync(string apiKeyHash, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        return await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.ApiKeyHash == apiKeyHash, cancellationToken);
+        var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(
+            t => t.ApiKeyHash == apiKeyHash || (t.PreviousApiKeyHash == apiKeyHash && t.PreviousApiKeyExpiresAt > now),
+            cancellationToken);
+
+        return tenant is null
+            ? null
+            : new TenantKeyMatch(tenant, tenant.ApiKeyHash == apiKeyHash ? null : tenant.PreviousApiKeyExpiresAt);
     }
 
     public async Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken = default)
@@ -68,7 +74,7 @@ public sealed class TenantStore : ITenantStore
         return true;
     }
 
-    public async Task<bool> SetApiKeyHashAsync(Guid id, string apiKeyHash, CancellationToken cancellationToken = default)
+    public async Task<bool> RotateApiKeyAsync(Guid id, string apiKeyHash, DateTimeOffset? previousKeyExpiresAt, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -78,7 +84,25 @@ public sealed class TenantStore : ITenantStore
             return false;
         }
 
+        tenant.PreviousApiKeyHash = previousKeyExpiresAt is null ? null : tenant.ApiKeyHash;
+        tenant.PreviousApiKeyExpiresAt = previousKeyExpiresAt;
         tenant.ApiKeyHash = apiKeyHash;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> RevokePreviousApiKeyAsync(Guid id, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+        if (tenant?.PreviousApiKeyExpiryAt(now) is null)
+        {
+            return false;
+        }
+
+        tenant.PreviousApiKeyHash = null;
+        tenant.PreviousApiKeyExpiresAt = null;
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

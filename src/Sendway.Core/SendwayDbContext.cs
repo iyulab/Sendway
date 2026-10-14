@@ -43,7 +43,13 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
             message.HasIndex(m => new { m.Status, m.NextAttemptAt });
         });
 
-        modelBuilder.Entity<Tenant>().HasIndex(t => t.ApiKeyHash).IsUnique();
+        modelBuilder.Entity<Tenant>(tenant =>
+        {
+            tenant.HasIndex(t => t.ApiKeyHash).IsUnique();
+
+            // A presented key is looked up as either a current or a previous key.
+            tenant.HasIndex(t => t.PreviousApiKeyHash);
+        });
 
         modelBuilder.Entity<WebhookEndpoint>().HasKey(e => e.TenantId);
 
