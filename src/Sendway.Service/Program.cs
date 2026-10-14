@@ -9,6 +9,7 @@ using Sendway.Service.Auth;
 using Sendway.Service.Delivery;
 using Sendway.Service.Endpoints;
 using Sendway.Service.Endpoints.Admin;
+using Sendway.Service.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -100,6 +101,8 @@ builder.Services.AddSingleton<WebhookDeliveryProcessor>();
 builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<WebhookDeliveryProcessor>());
 
 // Order matters: the seeder migrates the schema, and the delivery worker must not claim before that.
+builder.Services.AddSendwayHealthChecks();
+
 builder.Services.AddHostedService<ChannelCredentialSeeder>();
 builder.Services.AddHostedService<DeliveryWorker>();
 
@@ -135,6 +138,8 @@ admin.MapSharedCredentialEndpoints();
 admin.MapTenantWebhookEndpoints();
 admin.MapGetQueueStatsEndpoint();
 admin.MapGetAuditEventsEndpoint();
+
+app.MapSendwayHealthChecks();
 
 app.Run();
 

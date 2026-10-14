@@ -1,6 +1,6 @@
 # 운영
 
-Sendway를 직접 띄워 운영할 때 필요한 절차입니다 — 설치, 업그레이드, 백업과 복구, 장애 대응, 비밀값 교체, 감사 로그. 대기열 상태와 로그가 무엇을 뜻하는지는 [아키텍처](architecture.md)의 「운영」에 있습니다.
+Sendway를 직접 띄워 운영할 때 필요한 절차입니다 — 설치, 감시, 업그레이드, 백업과 복구, 장애 대응, 비밀값 교체, 감사 로그. 대기열 상태와 로그가 무엇을 뜻하는지는 [아키텍처](architecture.md)의 「운영」에 있습니다.
 
 ## 설치
 
@@ -19,7 +19,7 @@ docker run -d --name sendway -p 8080:8080 \
 - **`/data` 볼륨** — Data Protection 키 링(`/data/dp-keys`)이 여기 있습니다. 저장된 채널 자격증명·웹훅 서명 비밀값·발송 대기 중인 메시지 내용이 이 키로 암호화되므로, 이 볼륨은 컨테이너보다 오래 살아야 하고 데이터베이스와 함께 백업합니다(「백업과 복구」).
 - **관리자 키** — 없으면 `/admin/*`가 모두 `401`이라 테넌트를 만들 수 없습니다.
 - **공용 채널 자격증명** — 테넌트가 따로 등록하지 않았을 때 쓰는 발신 계정입니다. 설정(`Smtp__*`, `Fcm__CredentialsJson`, `Solapi__*`)으로 주거나, 설정 없이 띄운 뒤 `PUT /admin/credentials/{channel}`로 등록합니다(「비밀값 교체」). 둘 다 없는 채널로 온 발송은 접수된 뒤 재시도 끝에 `Failed`가 됩니다.
-- 띄운 뒤 `curl http://localhost:8080/admin/queues -H "X-Admin-Key: <관리자 키>"`가 `200`이면 관리자 키와 데이터베이스 연결이 함께 확인된 것입니다. 첫 테넌트를 만들고 보내 보는 방법은 [README](../README.md)의 「보내 보기」.
+- 띄운 뒤 `curl http://localhost:8080/health`가 `200`이면 데이터베이스까지 닿은 것이고, `curl http://localhost:8080/admin/queues -H "X-Admin-Key: <관리자 키>"`가 `200`이면 관리자 키도 맞는 것입니다. 첫 테넌트를 만들고 보내 보는 방법은 [README](../README.md)의 「보내 보기」.
 
 데이터베이스 없이 잠깐 띄워 보는 SQLite 경로(`Sendway__DatabaseProvider=Sqlite`)는 로컬 시험용입니다 — 파일이 네트워크 볼륨에 있으면 잠금이 안정적이지 않고, 스키마를 마이그레이션 없이 만들기 때문에 이후 버전으로 올릴 수 없습니다.
 
@@ -41,6 +41,8 @@ docker run -d --name sendway -p 8080:8080 \
 | `Sendway:Delivery:Concurrency` | `4` | 한 인스턴스가 동시에 보내는 메시지 수 |
 | `Sendway:Delivery:WorkerEnabled` | `true` | `false`면 접수만 하고 발송(메시지·웹훅)은 다른 인스턴스에 맡김 |
 | `Sendway:Webhooks:MaxAttempts` · `AttemptTimeout` · `Concurrency` | `6` · `00:00:15` · `2` | 웹훅 전달의 같은 값들 |
+| `Sendway:Health:MaxOldestDue` | `00:05:00` | 가져갈 수 있는 항목이 이보다 오래 기다리면 `/health`가 `Unhealthy` |
+| `Sendway:Health:MaxFailedInLast24Hours` | 없음 | 정하면, 최근 24시간 실패가 이를 넘을 때 `/health`가 `Degraded`(없으면 실패 수는 보여 주기만 함) |
 
 ### 여러 인스턴스
 
@@ -50,6 +52,29 @@ docker run -d --name sendway -p 8080:8080 \
 - **요청 한도는 인스턴스마다 셉니다.** 한도 상태가 메모리에 있으므로 인스턴스가 N개면 테넌트의 실제 한도는 대략 N배입니다.
 - 마이그레이션은 여러 인스턴스가 동시에 시작해도 데이터베이스 잠금으로 한 번만 적용됩니다.
 
+## 감시
+
+상태 확인 경로는 키 없이 부를 수 있고, 테넌트나 메시지에 관한 것은 아무것도 돌려주지 않습니다.
+
+| 경로 | 무엇을 보나 | 어디에 쓰나 |
+|---|---|---|
+| `/health/live` | 프로세스가 응답하는지만(데이터베이스를 보지 않음) | 생존(liveness) 프로브 — 데이터베이스 장애로 멀쩡한 인스턴스가 재시작되지 않게 |
+| `/health/ready` | 데이터베이스에 닿는지 | 준비(readiness) 프로브 — 요청을 받을 수 있는지. 발송이 밀려도 접수는 계속되므로 대기열은 보지 않음 |
+| `/health` | 데이터베이스 + 메시지·웹훅 대기열 | 외부 감시(업타임 모니터 등)와 경보 — `Healthy`가 아니면 `503` |
+
+```bash
+curl http://localhost:8080/health
+# → {"status": "Healthy", "checks": {
+#      "database": {"status": "Healthy", "description": null},
+#      "messages": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0},
+#      "webhooks": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0}}}
+```
+
+- **발송이 멈추거나 밀림** — 가져갈 수 있는 항목이 `Sendway:Health:MaxOldestDue`(기본 5분)보다 오래 기다리면 그 대기열이 `Unhealthy`입니다. 재시도 시각을 기다리는 항목은 세지 않으므로, 정상이면 부하와 무관하게 0 근처입니다.
+- **실패가 늘어남** — `Sendway:Health:MaxFailedInLast24Hours`를 정하면 그 수를 넘을 때 `Degraded`입니다. 없는 주소처럼 정상적인 실패도 있어 얼마가 많은지는 배포마다 다르므로 기본으로는 판정하지 않습니다.
+- 경보는 `/health`가 `503`인 동안으로 걸면 충분합니다. 본문의 `description`이 어느 대기열이 왜 그런지 말합니다.
+- 대기열 수치는 인스턴스마다 5초 동안 공유됩니다 — 키 없이 자주 불러도 매번 집계하지 않습니다. 데이터베이스에 닿지 못한 이유(연결 문자열이 담길 수 있음)는 응답이 아니라 로그에만 남습니다.
+
 ## 업그레이드
 
 새 이미지로 바꿔 띄우면 됩니다. 시작할 때 아직 적용되지 않은 마이그레이션이 적용되고, 그 뒤에 발송을 시작합니다.
@@ -57,7 +82,7 @@ docker run -d --name sendway -p 8080:8080 \
 1. **올리기 전에 백업합니다** — 마이그레이션은 되돌려지지 않으므로, 문제가 생겼을 때 돌아갈 곳은 백업입니다.
 2. 그 버전에 새 마이그레이션이 있는지 봅니다(`src/Sendway.Core/Migrations/`에 새로 생긴 파일). 표나 nullable 열을 **추가하기만** 하는 마이그레이션은 옛 버전 인스턴스가 아직 도는 동안 적용돼도 문제가 없습니다 — 무중단으로 갈아 끼울 수 있습니다. 열이나 표를 **지우거나 이름을 바꾸는** 마이그레이션이면 옛 인스턴스를 먼저 멈추고 올립니다.
 3. 정상 종료(`SIGTERM`)되는 인스턴스는 진행 중이던 발송 시도를 횟수에 넣지 않고 대기열로 돌려놓습니다. 강제로 끝난 인스턴스가 붙잡고 있던 메시지는 그 시도의 제한 시간에 30초를 더한 만큼(기본 1분) 기다렸다가 다른 인스턴스가 다시 집어 갑니다. 어느 쪽이든 접수된 메시지는 데이터베이스에 있으므로 재시작으로 잃지 않습니다.
-4. 올린 뒤 `GET /admin/queues`가 `200`이고 `oldestDueSeconds`가 커지지 않는지 봅니다.
+4. 올린 뒤 `/health`가 `200`이고 `oldestDueSeconds`가 커지지 않는지 봅니다.
 
 **되돌리기** — 옛 이미지로 다시 띄웁니다. 그 사이 적용된 마이그레이션이 추가만 했다면 옛 버전은 새 스키마에서 그대로 동작합니다(모르는 열은 쓰지 않습니다). 다만 새 버전에서 쓰기 시작한 기능은 옛 버전에서 동작하지 않습니다 — 예를 들어 겹침을 두고 교체한 테넌트 키는 옛 버전에서 새 키만 통합니다. 마이그레이션이 추가만 한 것이 아니면 올리기 전 백업으로 데이터베이스를 되돌린 뒤 옛 이미지를 띄웁니다.
 
@@ -80,7 +105,7 @@ docker run -d --name sendway -p 8080:8080 \
 
 ## 장애 대응
 
-먼저 볼 곳은 `GET /admin/queues`(대기열), 컨테이너 로그, `GET /messages/{id}`의 `error`, `GET /admin/audit`(최근 관리 행위)입니다.
+먼저 볼 곳은 `/health`(어느 검사가 왜 실패하는지), `GET /admin/queues`(대기열별 건수), 컨테이너 로그, `GET /messages/{id}`의 `error`, `GET /admin/audit`(최근 관리 행위)입니다.
 
 | 증상 | 확인 | 조치 |
 |---|---|---|
