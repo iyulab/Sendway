@@ -100,6 +100,26 @@ public class ChannelCredentialValidatorTests
         Assert.NotNull(ChannelCredentialValidator.Validate(new FcmOptions { CredentialsJson = credentialsJson }));
     }
 
+    [Fact]
+    public void Solapi_WithEverything_IsAccepted()
+    {
+        Assert.Null(ChannelCredentialValidator.Validate(new SolapiOptions { ApiKey = "key", ApiSecret = "secret", From = "0212345678" }));
+    }
+
+    [Theory]
+    [InlineData("", "secret", "0212345678", "apiKey")]
+    [InlineData("key", "", "0212345678", "apiSecret")]
+    [InlineData("key", "secret", "", "from")]
+    [InlineData("key", "secret", "02-1234-5678", "from")]
+    [InlineData("key", "secret", "+82212345678", "from")]
+    public void Solapi_WithAMissingOrUnusablePart_IsRefused(string apiKey, string apiSecret, string from, string expectedInError)
+    {
+        var error = ChannelCredentialValidator.Validate(new SolapiOptions { ApiKey = apiKey, ApiSecret = apiSecret, From = from });
+
+        Assert.NotNull(error);
+        Assert.Contains(expectedInError, error);
+    }
+
     private static GraphOptions Graph(
         string directoryId = "directory",
         string clientId = "client",

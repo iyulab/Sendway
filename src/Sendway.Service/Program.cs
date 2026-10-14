@@ -53,6 +53,13 @@ builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.Smtp, (s
 builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.EmailGraph, (sp, _) => sp.GetRequiredService<GraphEmailSender>());
 builder.Services.AddSingleton<IEmailSender, EmailSenderRouter>();
 builder.Services.AddSingleton<IPushSender, FcmPushSender>();
+builder.Services.AddSingleton<ISmsSender>(sp => new SolapiSmsSender(
+    new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+    {
+        BaseAddress = SolapiSmsSender.DefaultBaseAddress
+    },
+    sp.GetRequiredService<ICredentialStore>(),
+    sp.GetRequiredService<TimeProvider>()));
 
 // Who is calling is settled by the authentication middleware, before an endpoint reads the request
 // body: /messages by the tenant's API key, /admin by the administrator key.
@@ -110,6 +117,7 @@ var messages = app.MapGroup("/messages")
     .RequireRateLimiting(TenantRateLimitPolicy.PolicyName);
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
+messages.MapSendSmsEndpoint();
 messages.MapGetMessageStatusEndpoint();
 
 var admin = app.MapGroup("/admin")

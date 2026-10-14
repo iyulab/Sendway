@@ -14,6 +14,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
     private readonly MessageDeliveryOptions _options = new();
     private readonly ScriptedEmailSender _emailSender = new();
     private readonly ScriptedPushSender _pushSender = new();
+    private readonly ScriptedSmsSender _smsSender = new();
     private MessageOutbox _outbox = null!;
     private MessageDeliveryProcessor _processor = null!;
 
@@ -25,6 +26,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
             _outbox,
             _emailSender,
             _pushSender,
+            _smsSender,
             Options.Create(_options),
             new MessageDeliverySignal(),
             NullLogger<MessageDeliveryProcessor>.Instance);
@@ -98,6 +100,38 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         Assert.Equal("The Title", sent.Title);
         Assert.Equal("The Body", sent.Body);
         Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
+    }
+
+    [Fact]
+    public async Task ProcessNext_DeliversAnSms()
+    {
+        var message = new SmsMessage(_tenantId, "+821012345678", "The Body");
+        var enqueued = await _outbox.EnqueueAsync(
+            new MessageSubmission(_tenantId, MessageChannels.Sms, "+821012345678", MessagePayload.Serialize(message)));
+
+        await _processor.ProcessNextAsync();
+
+        var sent = Assert.Single(_smsSender.Sent);
+        Assert.Equal(_tenantId, sent.TenantId);
+        Assert.Equal("+821012345678", sent.To.ToString());
+        Assert.Equal("The Body", sent.Body);
+        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(enqueued.Record.Id)).Status);
+    }
+
+    [Fact]
+    public async Task ProcessNext_WhenTheProviderRejectsTheMessage_FailsWithoutRetrying()
+    {
+        _smsSender.FailWith(new MessageRejectedException("the recipient opted out"));
+        var message = new SmsMessage(_tenantId, "+821012345678", "The Body");
+        var enqueued = await _outbox.EnqueueAsync(
+            new MessageSubmission(_tenantId, MessageChannels.Sms, "+821012345678", MessagePayload.Serialize(message)));
+
+        await _processor.ProcessNextAsync();
+
+        var stored = await StoredAsync(enqueued.Record.Id);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
+        Assert.Equal("the recipient opted out", stored.Error);
+        Assert.Equal(1, stored.AttemptCount);
     }
 
     [Fact]
@@ -269,6 +303,28 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
             }
 
             Sent.Add(message);
+        }
+    }
+
+    private sealed class ScriptedSmsSender : ISmsSender
+    {
+        private Exception? _failure;
+
+        public List<SmsMessage> Sent { get; } = [];
+
+        public void FailWith(Exception failure) => _failure = failure;
+
+        public string? Check(SmsMessage message) => null;
+
+        public Task SendAsync(SmsMessage message, CancellationToken cancellationToken = default)
+        {
+            if (_failure is not null)
+            {
+                throw _failure;
+            }
+
+            Sent.Add(message);
+            return Task.CompletedTask;
         }
     }
 

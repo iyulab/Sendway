@@ -28,8 +28,22 @@ public class ChannelCredentialSeederTests : IDisposable
         Assert.Equal("second.example.com", afterRestart!.Host);
     }
 
+    [Fact]
+    public async Task Start_WithSolapiConfigured_StoresItAsTheSharedSmsCredential()
+    {
+        await using var factory = StartWithSmtpHost("first.example.com", new Dictionary<string, string?>
+        {
+            ["Solapi:ApiKey"] = "key",
+            ["Solapi:ApiSecret"] = "secret",
+            ["Solapi:From"] = "0212345678"
+        });
+
+        var stored = await factory.Services.GetRequiredService<ICredentialStore>().GetAsync<SolapiOptions>(null, ChannelCredentialNames.Solapi);
+        Assert.Equal("0212345678", stored!.From);
+    }
+
     // Both starts share one database and key directory, as a restarted deployment does.
-    private WebApplicationFactory<Program> StartWithSmtpHost(string host) =>
+    private WebApplicationFactory<Program> StartWithSmtpHost(string host, Dictionary<string, string?>? more = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
@@ -41,6 +55,7 @@ public class ChannelCredentialSeederTests : IDisposable
                     ["Smtp:Host"] = host,
                     ["Smtp:FromAddress"] = "sender@example.com"
                 });
+                configuration.AddInMemoryCollection(more ?? []);
             });
         });
 

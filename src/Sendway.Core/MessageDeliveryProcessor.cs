@@ -8,12 +8,14 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 {
     private readonly IEmailSender _emailSender;
     private readonly IPushSender _pushSender;
+    private readonly ISmsSender _smsSender;
     private readonly IOptions<MessageDeliveryOptions> _options;
 
     public MessageDeliveryProcessor(
         IMessageOutbox outbox,
         IEmailSender emailSender,
         IPushSender pushSender,
+        ISmsSender smsSender,
         IOptions<MessageDeliveryOptions> options,
         MessageDeliverySignal signal,
         ILogger<MessageDeliveryProcessor> logger)
@@ -21,6 +23,7 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
     {
         _emailSender = emailSender;
         _pushSender = pushSender;
+        _smsSender = smsSender;
         _options = options;
     }
 
@@ -32,8 +35,9 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
     {
         MessageChannels.Email => _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, message.Payload), cancellationToken),
         MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, message.Payload), cancellationToken),
+        MessageChannels.Sms => _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, message.Payload), cancellationToken),
         _ => throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.")
     };
 
-    protected override bool IsRejection(Exception exception) => exception is InvalidRecipientException;
+    protected override bool IsRejection(Exception exception) => exception is InvalidRecipientException or MessageRejectedException;
 }

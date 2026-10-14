@@ -69,6 +69,18 @@ public static class SetTenantCredentialEndpoint
                     }
                     return Results.NoContent();
                 }
+                case ChannelCredentialNames.Solapi:
+                {
+                    var (options, error) = await ReadAsync<SolapiOptions>(request, ChannelCredentialValidator.Validate, cancellationToken);
+                    if (options is null)
+                    {
+                        return ApiProblem.BadRequest(error!);
+                    }
+
+                    // SolapiSmsSender reads the credential on every send, so there is no cache to clear.
+                    await credentialStore.SetAsync(tenant.Id, ChannelCredentialNames.Solapi, options, cancellationToken);
+                    return Results.NoContent();
+                }
                 default:
                     return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }

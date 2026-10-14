@@ -13,6 +13,9 @@ public static class MessagePayload
     public static string Serialize(PushMessage message) =>
         JsonSerializer.Serialize(new PushPayload(message.DeviceToken, message.Title, message.Body));
 
+    public static string Serialize(SmsMessage message) =>
+        JsonSerializer.Serialize(new SmsPayload(message.To.ToString(), message.Body));
+
     public static EmailMessage ToEmailMessage(Guid tenantId, string payload)
     {
         var email = JsonSerializer.Deserialize<EmailPayload>(payload)
@@ -29,6 +32,14 @@ public static class MessagePayload
         return new PushMessage(tenantId, push.DeviceToken, push.Title, push.Body);
     }
 
+    public static SmsMessage ToSmsMessage(Guid tenantId, string payload)
+    {
+        var sms = JsonSerializer.Deserialize<SmsPayload>(payload)
+            ?? throw new InvalidOperationException("The queued SMS payload is empty.");
+
+        return new SmsMessage(tenantId, sms.To, sms.Body);
+    }
+
     private sealed record EmailPayload(
         IReadOnlyList<string> To,
         IReadOnlyList<string> Cc,
@@ -38,4 +49,6 @@ public static class MessagePayload
         string? HtmlBody);
 
     private sealed record PushPayload(string DeviceToken, string Title, string Body);
+
+    private sealed record SmsPayload(string To, string Body);
 }

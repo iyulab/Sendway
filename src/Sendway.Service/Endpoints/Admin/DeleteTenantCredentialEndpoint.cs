@@ -39,6 +39,9 @@ public static class DeleteTenantCredentialEndpoint
                         fcmPushSender.InvalidateTenant(tenant.Id);
                     }
                     return Results.NoContent();
+                case ChannelCredentialNames.Solapi:
+                    await credentialStore.DeleteAsync(tenant.Id, ChannelCredentialNames.Solapi, cancellationToken);
+                    return Results.NoContent();
                 default:
                     return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }

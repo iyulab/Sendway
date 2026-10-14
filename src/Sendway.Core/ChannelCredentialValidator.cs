@@ -89,6 +89,27 @@ public static class ChannelCredentialValidator
         return null;
     }
 
+    public static string? Validate(SolapiOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.ApiKey))
+        {
+            return "apiKey is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(options.ApiSecret))
+        {
+            return "apiSecret is required.";
+        }
+
+        // The sender number as registered with the provider: digits only, no hyphens or country code.
+        if (string.IsNullOrEmpty(options.From) || options.From.Length > 15 || !options.From.All(char.IsAsciiDigit))
+        {
+            return "from must be the registered sender number, digits only (e.g. 0212345678).";
+        }
+
+        return null;
+    }
+
     private static bool HasText(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) &&
         value.ValueKind == JsonValueKind.String &&

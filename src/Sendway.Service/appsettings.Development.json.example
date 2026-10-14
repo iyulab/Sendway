@@ -8,6 +8,11 @@
   "Fcm": {
     "CredentialsJson": "{\"type\":\"service_account\",\"project_id\":\"your-project\", ... }"
   },
+  "Solapi": {
+    "ApiKey": "your-api-key",
+    "ApiSecret": "your-api-secret",
+    "From": "0212345678"
+  },
   "Sendway": {
     "AdminApiKey": "generate-a-long-random-value-and-keep-it-secret"
   }

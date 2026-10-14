@@ -54,6 +54,12 @@ public sealed class ChannelCredentialSeeder : IHostedService
         {
             await _credentialStore.SetAsync(null, ChannelCredentialNames.Fcm, fcm, cancellationToken);
         }
+
+        var solapi = _configuration.GetSection("Solapi").Get<SolapiOptions>();
+        if (solapi is not null)
+        {
+            await _credentialStore.SetAsync(null, ChannelCredentialNames.Solapi, solapi, cancellationToken);
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
