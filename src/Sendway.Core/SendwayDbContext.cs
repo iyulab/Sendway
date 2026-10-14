@@ -5,6 +5,8 @@ namespace Sendway.Core;
 
 public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options) : DbContext(options)
 {
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
     public DbSet<ChannelCredential> ChannelCredentials => Set<ChannelCredential>();
 
     public DbSet<MessageRecord> MessageRecords => Set<MessageRecord>();
@@ -17,6 +19,13 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AuditEvent>(auditEvent =>
+        {
+            // The log is read newest first, across the deployment or for one tenant.
+            auditEvent.HasIndex(e => new { e.OccurredAt, e.Id });
+            auditEvent.HasIndex(e => new { e.TenantId, e.OccurredAt, e.Id });
+        });
+
         modelBuilder.Entity<ChannelCredential>().HasKey(c => new { c.TenantId, c.Channel });
 
         modelBuilder.Entity<MessageRecord>(message =>

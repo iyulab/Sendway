@@ -44,6 +44,7 @@ builder.Services.AddDbContextFactory<SendwayDbContext>((services, options) =>
 });
 builder.Services.AddSingleton<ICredentialStore, EncryptedCredentialStore>();
 builder.Services.AddSingleton<ITenantStore, TenantStore>();
+builder.Services.AddSingleton<IAuditLog, AuditLog>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMessageOutbox, MessageOutbox>();
 
@@ -133,6 +134,7 @@ admin.MapDeleteTenantCredentialEndpoint();
 admin.MapSharedCredentialEndpoints();
 admin.MapTenantWebhookEndpoints();
 admin.MapGetQueueStatsEndpoint();
+admin.MapGetAuditEventsEndpoint();
 
 app.Run();
 

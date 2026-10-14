@@ -25,7 +25,8 @@ public static class DeleteTenantCredentialEndpoint
             }
 
             await kind.DeleteAsync(httpContext, tenant.Id, cancellationToken);
+            await AdminAudit.RecordAsync(httpContext, tenant.Id, kind.Name);
             return Results.NoContent();
-        });
+        }).Audited("credential.deleted");
     }
 }

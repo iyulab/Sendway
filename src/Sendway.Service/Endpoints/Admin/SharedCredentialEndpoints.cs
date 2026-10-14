@@ -34,10 +34,14 @@ public static class SharedCredentialEndpoints
                 return refusal;
             }
 
-            return await kind.SetAsync(body, httpContext.RequestServices, tenantId: null, cancellationToken) is { } error
-                ? ApiProblem.BadRequest(error)
-                : Results.NoContent();
-        });
+            if (await kind.SetAsync(body, httpContext.RequestServices, tenantId: null, cancellationToken) is { } error)
+            {
+                return ApiProblem.BadRequest(error);
+            }
+
+            await AdminAudit.RecordAsync(httpContext, tenantId: null, kind.Name);
+            return Results.NoContent();
+        }).Audited("credential.set");
 
         group.MapDelete("/credentials/{channel}", async (string channel, HttpContext httpContext, IConfiguration configuration, CancellationToken cancellationToken) =>
         {
@@ -47,8 +51,9 @@ public static class SharedCredentialEndpoints
             }
 
             await kind.DeleteAsync(httpContext, tenantId: null, cancellationToken);
+            await AdminAudit.RecordAsync(httpContext, tenantId: null, kind.Name);
             return Results.NoContent();
-        });
+        }).Audited("credential.deleted");
     }
 
     // Why the shared value of this channel cannot be changed here, or null when it can (then `kind`

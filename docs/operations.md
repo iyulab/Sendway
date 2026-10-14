@@ -42,3 +42,31 @@ Sendway가 쓰는 비밀값은 **설정(환경변수·설정 파일)으로 주�
 ### 교체하지 않는 것
 
 **Data Protection 키 링**(컨테이너 배포 시 `/data/dp-keys`)은 저장된 자격증명과 접수된 메시지 내용을 암호화하는 키입니다. 프레임워크가 주기적으로 새 키를 추가하고 옛 키는 복호화용으로 남겨 두므로 손으로 교체하지 않습니다. 이 디렉터리를 지우거나 잃으면 저장된 테넌트별 자격증명과 웹훅 비밀값을 읽을 수 없게 되어 다시 등록해야 합니다 — 데이터베이스와 함께 백업합니다.
+
+## 감사 로그
+
+관리 API로 상태를 바꾼 행위는 성공했을 때마다 데이터베이스에 한 건씩 남습니다. 조회(`GET`)와 거절된 요청(`400`·`404`·`409`)은 상태가 그대로이므로 남지 않습니다.
+
+| `action` | 행위 | `subject` |
+|---|---|---|
+| `tenant.created` | 테넌트 생성 | 테넌트 이름 |
+| `tenant.deactivated` · `tenant.reactivated` | 비활성화 · 재활성화 | — |
+| `tenant.key_rotated` | 테넌트 키 교체 | — |
+| `credential.set` · `credential.deleted` | 채널 자격증명 등록·교체 · 삭제(테넌트별, 또는 `tenantId`가 비어 있으면 공용) | 채널 |
+| `webhook.set` · `webhook.deleted` | 웹훅 등록 · 해제 | 등록한 URL |
+
+- **누가** — `actor`는 `admin-key:` 뒤에 관리자 키 해시의 앞 12자리입니다. 관리자 키가 하나뿐이므로 신원은 「그 키를 가진 사람」까지이고, 키를 교체하면 이 값이 바뀌어 어느 키로 한 일인지 갈립니다. 이 값으로 키를 알아낼 수는 없습니다.
+- **어디서** — `remoteAddress`는 서비스가 본 연결의 주소입니다. 리버스 프록시 뒤에서는 프록시의 주소가 찍히므로, 호출한 쪽의 주소가 필요하면 배포에서 forwarded headers를 켭니다(ASP.NET Core `ASPNETCORE_FORWARDEDHEADERS_ENABLED`, 신뢰할 프록시 구성).
+- **비밀값은 남지 않습니다** — 키, 자격증명 본문, 웹훅 서명 비밀값은 어느 필드에도 들어가지 않습니다.
+- **기록 시점** — 변경이 저장된 뒤 같은 요청 안에서 기록합니다. 기록이 실패하면 오류 로그를 남기고 응답은 그대로 둡니다(이미 바뀐 상태를 실패로 답하면 호출한 쪽이 같은 행위를 되풀이합니다). 변경과 같은 트랜잭션은 아니어서, 그 사이에 프로세스가 죽으면 한 건이 빠질 수 있습니다.
+- **보관** — 지우지 않습니다. 관리 행위는 양이 작습니다.
+
+```bash
+# 최신순, 기본 100건(최대 1000). 테넌트 하나만 보려면 tenantId
+curl "http://localhost:8080/admin/audit?tenantId=<tenantId>&limit=50" -H "X-Admin-Key: <관리자 키>"
+# → [{"id": "…", "occurredAt": "…", "actor": "admin-key:3f9a…", "action": "tenant.key_rotated",
+#     "tenantId": "…", "subject": null, "remoteAddress": "…"}, …]
+
+# 다음 쪽: 받은 마지막 항목의 id를 before로
+curl "http://localhost:8080/admin/audit?limit=50&before=<마지막 id>" -H "X-Admin-Key: <관리자 키>"
+```

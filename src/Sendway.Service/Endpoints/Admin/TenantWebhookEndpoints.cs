@@ -9,6 +9,7 @@ public static class TenantWebhookEndpoints
         group.MapPut("/tenants/{id:guid}/webhook", async (
             Guid id,
             SetTenantWebhookRequest request,
+            HttpContext httpContext,
             ITenantStore tenantStore,
             IWebhookEndpointStore endpoints,
             CancellationToken cancellationToken) =>
@@ -27,9 +28,10 @@ public static class TenantWebhookEndpoints
             }
 
             var registration = await endpoints.SetAsync(id, url, cancellationToken);
+            await AdminAudit.RecordAsync(httpContext, id, registration.Url.AbsoluteUri);
 
             return Results.Ok(new TenantWebhookRegistrationResponse(registration.Url.AbsoluteUri, registration.Secret, registration.CreatedAt));
-        });
+        }).Audited("webhook.set");
 
         group.MapGet("/tenants/{id:guid}/webhook", async (Guid id, IWebhookEndpointStore endpoints, CancellationToken cancellationToken) =>
         {
@@ -40,8 +42,16 @@ public static class TenantWebhookEndpoints
                 : Results.Ok(new TenantWebhookResponse(endpoint.Url.AbsoluteUri, endpoint.CreatedAt));
         });
 
-        group.MapDelete("/tenants/{id:guid}/webhook", async (Guid id, IWebhookEndpointStore endpoints, CancellationToken cancellationToken) =>
-            await endpoints.DeleteAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+        group.MapDelete("/tenants/{id:guid}/webhook", async (Guid id, HttpContext httpContext, IWebhookEndpointStore endpoints, CancellationToken cancellationToken) =>
+        {
+            if (!await endpoints.DeleteAsync(id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            await AdminAudit.RecordAsync(httpContext, id);
+            return Results.NoContent();
+        }).Audited("webhook.deleted");
     }
 }
 

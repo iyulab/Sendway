@@ -26,9 +26,13 @@ public static class SetTenantCredentialEndpoint
                 return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }
 
-            return await kind.SetAsync(body, httpContext.RequestServices, tenant.Id, cancellationToken) is { } error
-                ? ApiProblem.BadRequest(error)
-                : Results.NoContent();
-        });
+            if (await kind.SetAsync(body, httpContext.RequestServices, tenant.Id, cancellationToken) is { } error)
+            {
+                return ApiProblem.BadRequest(error);
+            }
+
+            await AdminAudit.RecordAsync(httpContext, tenant.Id, kind.Name);
+            return Results.NoContent();
+        }).Audited("credential.set");
     }
 }

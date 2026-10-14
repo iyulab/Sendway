@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Sendway.Core;
 
 namespace Sendway.Service.Auth;
 
@@ -40,7 +41,15 @@ public sealed class AdminKeyAuthenticationHandler : AuthenticationHandler<Authen
             return Task.FromResult(AuthenticateResult.Fail("The administrator key does not match."));
         }
 
-        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Role, "administrator")], Scheme.Name);
+        // There is one administrator key, so "who" is "whoever holds this key". Naming it by a
+        // fingerprint still tells key generations apart once the key is replaced; the fingerprint
+        // is a prefix of the key's hash and cannot be turned back into the key.
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.Role, "administrator"),
+                new Claim(ClaimTypes.Name, "admin-key:" + ApiKeyGenerator.Hash(expectedKey)[..12].ToLowerInvariant())
+            ],
+            Scheme.Name);
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
     }
 
