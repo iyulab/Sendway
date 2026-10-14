@@ -6,6 +6,7 @@ namespace Sendway.Core;
 // Delivers accepted messages through their channel's sender.
 public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 {
+    private readonly IMessageOutbox _outbox;
     private readonly IEmailSender _emailSender;
     private readonly IPushSender _pushSender;
     private readonly ISmsSender _smsSender;
@@ -21,6 +22,7 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
         ILogger<MessageDeliveryProcessor> logger)
         : base(outbox, signal, logger)
     {
+        _outbox = outbox;
         _emailSender = emailSender;
         _pushSender = pushSender;
         _smsSender = smsSender;
@@ -31,13 +33,18 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 
     protected override DeliveryOptions Options => _options.Value;
 
-    protected override Task SendAsync(ClaimedMessage message, CancellationToken cancellationToken) => message.Channel switch
+    protected override Task SendAsync(ClaimedMessage message, CancellationToken cancellationToken)
     {
-        MessageChannels.Email => _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, message.Payload), cancellationToken),
-        MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, message.Payload), cancellationToken),
-        MessageChannels.Sms => _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, message.Payload), cancellationToken),
-        _ => throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.")
-    };
+        var payload = _outbox.ReadPayload(message);
+
+        return message.Channel switch
+        {
+            MessageChannels.Email => _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, payload), cancellationToken),
+            MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, payload), cancellationToken),
+            MessageChannels.Sms => _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, payload), cancellationToken),
+            _ => throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.")
+        };
+    }
 
     protected override bool IsRejection(Exception exception) => exception is InvalidRecipientException or MessageRejectedException;
 }

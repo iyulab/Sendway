@@ -8,6 +8,10 @@ public interface IMessageOutbox : IDeliveryQueue<ClaimedMessage>
     Task<EnqueueResult> EnqueueAsync(MessageSubmission submission, CancellationToken cancellationToken = default);
 
     Task<MessageRecord?> GetAsync(Guid id, CancellationToken cancellationToken = default);
+
+    // The claimed message's content, decrypted. Throws when it cannot be — part of the attempt, so
+    // the failure is retried and counted like any other rather than stopping the claim.
+    string ReadPayload(ClaimedMessage message);
 }
 
 public sealed record MessageSubmission(Guid TenantId, string Channel, string Recipient, string Payload, string? IdempotencyKey = null);
@@ -25,5 +29,6 @@ public enum EnqueueOutcome
 
 public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord Record);
 
-public sealed record ClaimedMessage(Guid Id, Guid TenantId, string Channel, string Payload, int AttemptCount)
+// The content stays encrypted until the attempt reads it (IMessageOutbox.ReadPayload).
+public sealed record ClaimedMessage(Guid Id, Guid TenantId, string Channel, string ProtectedPayload, int AttemptCount)
     : ClaimedDelivery(Id, TenantId, AttemptCount);

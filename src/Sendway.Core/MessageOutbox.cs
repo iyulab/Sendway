@@ -101,7 +101,21 @@ public sealed class MessageOutbox : IMessageOutbox
 
         return record is null
             ? null
-            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, _protector.Unprotect(record.Payload!), record.AttemptCount);
+            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, record.Payload!, record.AttemptCount);
+    }
+
+    public string ReadPayload(ClaimedMessage message)
+    {
+        try
+        {
+            return _protector.Unprotect(message.ProtectedPayload);
+        }
+        catch (CryptographicException ex)
+        {
+            throw new InvalidOperationException(
+                "The message content could not be decrypted: the key that protected it is not in this instance's Data Protection key ring.",
+                ex);
+        }
     }
 
     public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) =>

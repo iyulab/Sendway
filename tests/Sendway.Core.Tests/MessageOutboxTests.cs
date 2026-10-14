@@ -156,7 +156,7 @@ public class MessageOutboxTests : IAsyncLifetime
         Assert.Equal(enqueued.Record.Id, claimed!.Id);
         Assert.Equal(_tenantId, claimed.TenantId);
         Assert.Equal(MessageChannels.Email, claimed.Channel);
-        Assert.Equal("the payload", claimed.Payload);
+        Assert.Equal("the payload", _outbox.ReadPayload(claimed));
         Assert.Equal(1, claimed.AttemptCount);
 
         var stored = await StoredAsync(claimed.Id);
@@ -258,7 +258,7 @@ public class MessageOutboxTests : IAsyncLifetime
         _time.Advance(TimeSpan.FromSeconds(1));
         var retried = await _outbox.ClaimNextAsync(Lease);
         Assert.Equal(claimed.Id, retried!.Id);
-        Assert.Equal("kept for the retry", retried.Payload);
+        Assert.Equal("kept for the retry", _outbox.ReadPayload(retried));
         Assert.Equal(2, retried.AttemptCount);
     }
 

@@ -195,6 +195,40 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
             delays);
     }
 
+    // The content was protected with a key ring this instance does not have (it was lost, or the
+    // instance was started without the volume holding it). The message must still end — retried
+    // like any failure, so restoring the key ring in time saves it, then Failed with the reason.
+    [Fact]
+    public async Task ProcessNext_WhenTheContentCannotBeDecrypted_RetriesThenFails()
+    {
+        var id = await EnqueueEmailAsync();
+        var withoutTheKeyRing = new MessageDeliveryProcessor(
+            new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal()),
+            _emailSender,
+            _pushSender,
+            _smsSender,
+            Options.Create(_options),
+            new MessageDeliverySignal(),
+            NullLogger<MessageDeliveryProcessor>.Instance);
+
+        Assert.True(await withoutTheKeyRing.ProcessNextAsync());
+        Assert.Equal(DeliveryStatus.Queued, (await StoredAsync(id)).Status);
+
+        for (var attempt = 2; attempt <= _options.MaxAttempts; attempt++)
+        {
+            _time.Advance(TimeSpan.FromHours(1));
+            Assert.True(await withoutTheKeyRing.ProcessNextAsync());
+        }
+
+        var stored = await StoredAsync(id);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
+        Assert.Equal(_options.MaxAttempts, stored.AttemptCount);
+        Assert.Contains("key", stored.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(_emailSender.Sent);
+        _time.Advance(TimeSpan.FromHours(1));
+        Assert.False(await withoutTheKeyRing.ProcessNextAsync());
+    }
+
     [Fact]
     public async Task ProcessNext_WhenEveryAttemptFails_FailsAfterTheLastOne()
     {

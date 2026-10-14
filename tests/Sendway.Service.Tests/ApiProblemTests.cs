@@ -249,6 +249,8 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
         public Task<ClaimedMessage?> ClaimNextAsync(TimeSpan lease, CancellationToken cancellationToken = default) =>
             Task.FromResult<ClaimedMessage?>(null);
 
+        public string ReadPayload(ClaimedMessage message) => throw new InvalidOperationException(Cause);
+
         public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task MarkFailedAsync(ClaimedMessage claim, string error, CancellationToken cancellationToken = default) => Task.CompletedTask;
