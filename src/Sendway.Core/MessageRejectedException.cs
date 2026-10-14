@@ -7,4 +7,8 @@ public sealed class MessageRejectedException : Exception
     public MessageRejectedException(string message) : base(message)
     {
     }
+
+    public MessageRejectedException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 }

@@ -1,4 +1,5 @@
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Kiota.Abstractions.Serialization;
 using Microsoft.Kiota.Serialization.Json;
 using Sendway.Core;
@@ -46,5 +47,37 @@ public class GraphEmailSenderTests
 
         Assert.Contains("cc@example.com", json);
         Assert.Contains("bcc@example.com", json);
+    }
+
+    private static ODataError GraphError(int status, string? code = null) =>
+        new() { ResponseStatusCode = status, Error = new MainError { Code = code, Message = "refused" } };
+
+    [Fact]
+    public void AnInvalidRecipientsRefusal_EndsTheMessageAsARecipientFailure()
+    {
+        Assert.IsType<InvalidRecipientException>(GraphEmailSender.AsFinal(GraphError(400, "ErrorInvalidRecipients")));
+    }
+
+    [Theory]
+    [InlineData(400, "ErrorInvalidRequest")]
+    [InlineData(413, null)]
+    public void ARefusedRequest_EndsTheMessage(int status, string? code)
+    {
+        var final = Assert.IsType<MessageRejectedException>(GraphEmailSender.AsFinal(GraphError(status, code)));
+
+        Assert.Contains("refused", final.Message);
+    }
+
+    // A credential, a permission or the sending mailbox — an operator fixes these, so the message
+    // waits on its retries; throttling and server errors pass by themselves.
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    [InlineData(404)]
+    [InlineData(429)]
+    [InlineData(503)]
+    public void OtherFailures_AreLeftToBeRetried(int status)
+    {
+        Assert.Null(GraphEmailSender.AsFinal(GraphError(status, "Whatever")));
     }
 }

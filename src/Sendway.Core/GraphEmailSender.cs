@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Graph.Users.Item.SendMail;
+using Microsoft.Kiota.Abstractions;
 
 namespace Sendway.Core;
 
@@ -44,9 +46,36 @@ public sealed class GraphEmailSender : IEmailSender
 
         var graphMessage = BuildGraphMessage(message);
 
-        await tenantClient.Client.Users[tenantClient.FromAddress].SendMail.PostAsync(
-            new SendMailPostRequestBody { Message = graphMessage, SaveToSentItems = false },
-            cancellationToken: cancellationToken);
+        try
+        {
+            await tenantClient.Client.Users[tenantClient.FromAddress].SendMail.PostAsync(
+                new SendMailPostRequestBody { Message = graphMessage, SaveToSentItems = false },
+                cancellationToken: cancellationToken);
+        }
+        catch (ApiException ex) when (AsFinal(ex) is { } final)
+        {
+            throw final;
+        }
+    }
+
+    // sendMail answers 202 once Exchange has taken the message; a recipient that turns out not to
+    // exist comes back later as a non-delivery report, not here. What Graph refuses on the spot is the
+    // request itself (400, 413 for size), and the same message would be refused again, so it ends the
+    // message. 401/403/404 — a credential, a permission, the sending mailbox — are for an operator to
+    // fix and stay retried, as are throttling (429) and server errors.
+    internal static Exception? AsFinal(ApiException exception)
+    {
+        var code = (exception as ODataError)?.Error?.Code;
+        var detail = (exception as ODataError)?.Error?.Message ?? exception.Message;
+
+        return exception.ResponseStatusCode switch
+        {
+            400 when code == "ErrorInvalidRecipients" =>
+                new InvalidRecipientException($"Microsoft Graph refused the recipients: {detail}", exception),
+            400 or 413 =>
+                new MessageRejectedException($"Microsoft Graph refused the message ({code ?? exception.ResponseStatusCode.ToString()}): {detail}", exception),
+            _ => null
+        };
     }
 
     // SetTenantCredentialEndpoint calls this after registering/replacing this tenant's Graph

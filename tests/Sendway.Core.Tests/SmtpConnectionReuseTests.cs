@@ -1,4 +1,3 @@
-using MailKit.Net.Smtp;
 using Sendway.Core;
 using Xunit;
 
@@ -71,7 +70,7 @@ public class SmtpConnectionReuseTests
         using var sender = SenderFor(server);
 
         await sender.SendAsync(Message());
-        await Assert.ThrowsAsync<SmtpCommandException>(() => sender.SendAsync(Message("reject@example.com")));
+        await Assert.ThrowsAsync<InvalidRecipientException>(() => sender.SendAsync(Message("reject@example.com")));
         await sender.SendAsync(Message());
 
         Assert.Equal(2, server.Delivered);

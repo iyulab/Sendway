@@ -52,20 +52,27 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
             ? _accountGates.GetOrAdd($"{account}:{limit}", _ => new SemaphoreSlim(limit, limit))
             : null;
 
-        if (gate is null)
-        {
-            await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
-            return;
-        }
-
-        await gate.WaitAsync(cancellationToken);
         try
         {
-            await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
+            if (gate is null)
+            {
+                await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
+                return;
+            }
+
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
         }
-        finally
+        catch (SmtpCommandException ex) when (SmtpRefusals.AsFinal(ex) is { } final)
         {
-            gate.Release();
+            throw final;
         }
     }
 
