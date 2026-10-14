@@ -126,7 +126,7 @@ curl http://localhost:8080/health
 
 ## 장애 대응
 
-먼저 볼 곳은 `/health`(어느 검사가 왜 실패하는지), `GET /admin/queues`(대기열별 건수), 컨테이너 로그, `GET /messages/{id}`의 `error`, `GET /admin/audit`(최근 관리 행위)입니다.
+먼저 볼 곳은 `/health`(어느 검사가 왜 실패하는지), `GET /admin/queues`(대기열별 건수), `GET /admin/usage`(테넌트·채널별 성공·실패 건수와 마지막 성공 시각), 컨테이너 로그, `GET /messages/{id}`의 `error`, `GET /admin/audit`(최근 관리 행위)입니다.
 
 | 증상 | 확인 | 조치 |
 |---|---|---|

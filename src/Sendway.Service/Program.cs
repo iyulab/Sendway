@@ -48,6 +48,7 @@ builder.Services.AddSingleton<ITenantStore, TenantStore>();
 builder.Services.AddSingleton<IAuditLog, AuditLog>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMessageOutbox, MessageOutbox>();
+builder.Services.AddSingleton<IMessageUsage, MessageUsage>();
 
 builder.Services.AddSingleton<SmtpEmailSender>();
 builder.Services.AddSingleton<GraphEmailSender>();
@@ -137,6 +138,7 @@ admin.MapDeleteTenantCredentialEndpoint();
 admin.MapSharedCredentialEndpoints();
 admin.MapTenantWebhookEndpoints();
 admin.MapGetQueueStatsEndpoint();
+admin.MapGetUsageEndpoint();
 admin.MapGetAuditEventsEndpoint();
 
 app.MapSendwayHealthChecks();

@@ -54,7 +54,8 @@ jobs:
       - name: No known vulnerable packages
         run: scripts/audit-packages.sh
 
-      - run: dotnet build Sendway.slnx --configuration Release
+      # Warnings fail CI: nothing else would notice them piling up.
+      - run: dotnet build Sendway.slnx --configuration Release -p:TreatWarningsAsErrors=true
 
       - run: dotnet test Sendway.slnx --configuration Release --no-build
 
