@@ -41,24 +41,12 @@ public sealed class ChannelCredentialSeeder : IHostedService
             }
         }
 
-        // Configuration is the only way to supply the shared credentials, so it wins over what an
-        // earlier start stored — otherwise a changed value would never take effect after a restart.
-        var smtp = _configuration.GetSection("Smtp").Get<SmtpOptions>();
-        if (smtp is not null)
+        // A shared credential configuration supplies is owned by configuration: it replaces what an
+        // earlier start or the admin API stored, so a changed value takes effect after a restart. A
+        // channel configuration says nothing about keeps its stored value, managed through the API.
+        foreach (var kind in ChannelCredentialKinds.All)
         {
-            await _credentialStore.SetAsync(null, ChannelCredentialNames.Smtp, smtp, cancellationToken);
-        }
-
-        var fcm = _configuration.GetSection("Fcm").Get<FcmOptions>();
-        if (fcm is not null)
-        {
-            await _credentialStore.SetAsync(null, ChannelCredentialNames.Fcm, fcm, cancellationToken);
-        }
-
-        var solapi = _configuration.GetSection("Solapi").Get<SolapiOptions>();
-        if (solapi is not null)
-        {
-            await _credentialStore.SetAsync(null, ChannelCredentialNames.Solapi, solapi, cancellationToken);
+            await kind.SeedAsync(_configuration, _credentialStore, cancellationToken);
         }
     }
 

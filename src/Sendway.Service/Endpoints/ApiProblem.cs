@@ -17,6 +17,9 @@ public static class ApiProblem
     // The Idempotency-Key was already used for a different request.
     public const string IdempotencyKeyReused = "idempotency_key_reused";
 
+    // A shared setting is supplied by configuration, so it cannot be changed through the API.
+    public const string ManagedByConfiguration = "managed_by_configuration";
+
     // The tenant's request rate limit was exceeded; see the Retry-After header.
     public const string RateLimited = "rate_limited";
 

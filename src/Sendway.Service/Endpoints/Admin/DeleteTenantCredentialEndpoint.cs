@@ -9,10 +9,8 @@ public static class DeleteTenantCredentialEndpoint
         group.MapDelete("/tenants/{id:guid}/credentials/{channel}", async (
             Guid id,
             string channel,
+            HttpContext httpContext,
             ITenantStore tenantStore,
-            ICredentialStore credentialStore,
-            IPushSender pushSender,
-            GraphEmailSender graphEmailSender,
             CancellationToken cancellationToken) =>
         {
             var tenant = await tenantStore.GetByIdAsync(id, cancellationToken);
@@ -21,30 +19,13 @@ public static class DeleteTenantCredentialEndpoint
                 return Results.NotFound();
             }
 
-            switch (channel)
+            if (ChannelCredentialKinds.Find(channel) is not { } kind)
             {
-                case ChannelCredentialNames.Smtp:
-                    await credentialStore.DeleteAsync(tenant.Id, ChannelCredentialNames.Smtp, cancellationToken);
-                    return Results.NoContent();
-                case ChannelCredentialNames.EmailGraph:
-                    await credentialStore.DeleteAsync(tenant.Id, ChannelCredentialNames.EmailGraph, cancellationToken);
-                    // Same reason SetTenantCredentialEndpoint invalidates on PUT — a cached
-                    // GraphServiceClient must not keep serving the just-deleted credential.
-                    graphEmailSender.InvalidateTenant(tenant.Id);
-                    return Results.NoContent();
-                case ChannelCredentialNames.Fcm:
-                    await credentialStore.DeleteAsync(tenant.Id, ChannelCredentialNames.Fcm, cancellationToken);
-                    if (pushSender is FcmPushSender fcmPushSender)
-                    {
-                        fcmPushSender.InvalidateTenant(tenant.Id);
-                    }
-                    return Results.NoContent();
-                case ChannelCredentialNames.Solapi:
-                    await credentialStore.DeleteAsync(tenant.Id, ChannelCredentialNames.Solapi, cancellationToken);
-                    return Results.NoContent();
-                default:
-                    return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
+                return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }
+
+            await kind.DeleteAsync(httpContext, tenant.Id, cancellationToken);
+            return Results.NoContent();
         });
     }
 }

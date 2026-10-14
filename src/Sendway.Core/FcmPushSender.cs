@@ -74,6 +74,13 @@ public sealed class FcmPushSender : IPushSender
         _apps.TryRemove(tenantId, out _);
     }
 
+    // Called after the shared FCM credential changes. Every tenant without an override built its
+    // cached FirebaseApp from the shared credential, so all of them are recreated on their next send.
+    public void InvalidateAll()
+    {
+        _apps.Clear();
+    }
+
     private static async Task<FirebaseApp> CreateAppAsync(Guid tenantId, ICredentialStore credentialStore)
     {
         var options = await credentialStore.GetAsync<FcmOptions>(tenantId, ChannelCredentialNames.Fcm)

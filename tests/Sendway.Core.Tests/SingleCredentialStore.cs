@@ -23,7 +23,7 @@ internal sealed class SingleCredentialStore : ICredentialStore
         throw new NotSupportedException();
     }
 
-    public Task DeleteAsync(Guid tenantId, string channel, CancellationToken cancellationToken = default)
+    public Task DeleteAsync(Guid? tenantId, string channel, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

@@ -130,6 +130,7 @@ admin.MapSetTenantActiveEndpoint();
 admin.MapRotateTenantKeyEndpoint();
 admin.MapSetTenantCredentialEndpoint();
 admin.MapDeleteTenantCredentialEndpoint();
+admin.MapSharedCredentialEndpoints();
 admin.MapTenantWebhookEndpoints();
 admin.MapGetQueueStatsEndpoint();
 

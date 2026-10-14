@@ -50,6 +50,7 @@
 | `invalid_recipient` | 400 | 목적지 주소의 형식이 잘못됨 |
 | `unauthorized` | 401 | API 키가 없거나, 알 수 없거나, 비활성 테넌트의 키 |
 | `not_found` | 404 | 그 경로에 리소스가 없거나 호출자에게 보이지 않음 |
+| `managed_by_configuration` | 409 | 관리 API로 바꾸려는 공용 설정을 설정 파일·환경변수가 공급하고 있음. 설정에서 바꾸고 재시작하거나, 설정에서 빼고 API로 관리 |
 | `idempotency_key_reused` | 422 | 같은 `Idempotency-Key`가 다른 내용의 요청에 이미 쓰임 |
 | `rate_limited` | 429 | 테넌트의 요청 한도 초과. `Retry-After` 헤더만큼 기다린 뒤 재시도 |
 | `internal_error` | 500 | 서비스 쪽 실패. 요청이 접수됐는지 알 수 없으므로 같은 `Idempotency-Key`로 다시 보내면 안전 |
@@ -114,6 +115,6 @@ SMS(`POST /messages/sms`)는 `to`(수신번호 하나)와 `body`를 받습니다
 
 ## 저장
 
-채널 자격증명, 메시지(접수된 내용과 발송 상태), 웹훅 엔드포인트와 전달 대기 중인 이벤트는 PostgreSQL 데이터베이스에 저장됩니다(`ConnectionStrings:Sendway`). 웹훅 서명 비밀값은 채널 자격증명과 같은 방식으로 암호화해 둡니다. 메시지 내용은 발송에 필요한 동안만 암호화해 보관하고, 메시지가 `Sent`나 `Failed`로 끝나면 지웁니다 — 그 뒤에는 채널·목적지·상태·시각만 남습니다. 채널 자격증명은 **기본적으로 프로세스 시작 시 설정(환경변수 또는 설정 파일)으로 공급된 공용 값**을 쓰며, 테넌트별로 `PUT /admin/tenants/{id}/credentials/{channel}`을 통해 오버라이드를 등록할 수 있습니다(예: 테넌트마다 다른 Firebase 프로젝트). 등록할 때 그 채널의 발송에 꼭 필요한 항목이 빠져 있으면(발신 주소, SMTP 호스트나 프리셋, Graph 앱 정보, 서비스 계정 키 등) 저장하지 않고 `400`으로 이유를 돌려줍니다 — 프로바이더가 그 자격증명을 실제로 받아 주는지는 발송해 봐야 알 수 있습니다. 등록한 오버라이드는 `DELETE /admin/tenants/{id}/credentials/{channel}`로 제거할 수 있으며, 제거 후에는 공용 기본값(없으면 미설정)으로 되돌아갑니다. 두 경우 모두 [ASP.NET Core Data Protection API](https://learn.microsoft.com/aspnet/core/security/data-protection/introduction)로 암호화한 뒤 기록합니다 — 특정 클라우드 벤더의 키 관리 서비스에 의존하지 않으므로 클라우드/온프레미스 배포 모두에서 동일하게 동작합니다. 암호화 키 자체는 별도 디렉터리(컨테이너 배포 시 `/data/dp-keys`, 볼륨 마운트 필요)에 파일로 보관됩니다. (테스트 스위트는 격리를 위해 별도로 SQLite 임시 파일을 씁니다 — 실행 중인 서비스와는 무관.)
+채널 자격증명, 메시지(접수된 내용과 발송 상태), 웹훅 엔드포인트와 전달 대기 중인 이벤트는 PostgreSQL 데이터베이스에 저장됩니다(`ConnectionStrings:Sendway`). 웹훅 서명 비밀값은 채널 자격증명과 같은 방식으로 암호화해 둡니다. 메시지 내용은 발송에 필요한 동안만 암호화해 보관하고, 메시지가 `Sent`나 `Failed`로 끝나면 지웁니다 — 그 뒤에는 채널·목적지·상태·시각만 남습니다. 채널 자격증명은 **공용 값**을 쓰며 — 설정(환경변수 또는 설정 파일)으로 공급하면 시작할 때마다 그 값이 저장되고, 설정에 없으면 `PUT /admin/credentials/{channel}`로 런타임에 등록·교체합니다(설정에 있는 채널은 API로 바꿀 수 없음, 절차는 [운영](operations.md)) — 테넌트별로 `PUT /admin/tenants/{id}/credentials/{channel}`을 통해 오버라이드를 등록할 수 있습니다(예: 테넌트마다 다른 Firebase 프로젝트). 등록할 때 그 채널의 발송에 꼭 필요한 항목이 빠져 있으면(발신 주소, SMTP 호스트나 프리셋, Graph 앱 정보, 서비스 계정 키 등) 저장하지 않고 `400`으로 이유를 돌려줍니다 — 프로바이더가 그 자격증명을 실제로 받아 주는지는 발송해 봐야 알 수 있습니다. 등록한 오버라이드는 `DELETE /admin/tenants/{id}/credentials/{channel}`로 제거할 수 있으며, 제거 후에는 공용 기본값(없으면 미설정)으로 되돌아갑니다. 두 경우 모두 [ASP.NET Core Data Protection API](https://learn.microsoft.com/aspnet/core/security/data-protection/introduction)로 암호화한 뒤 기록합니다 — 특정 클라우드 벤더의 키 관리 서비스에 의존하지 않으므로 클라우드/온프레미스 배포 모두에서 동일하게 동작합니다. 암호화 키 자체는 별도 디렉터리(컨테이너 배포 시 `/data/dp-keys`, 볼륨 마운트 필요)에 파일로 보관됩니다. (테스트 스위트는 격리를 위해 별도로 SQLite 임시 파일을 씁니다 — 실행 중인 서비스와는 무관.)
 
 내장 파일 DB(SQLite)를 컨테이너 배포에서 쓰지 않는 이유: SQLite는 EF Core 기본 WAL 저널 모드가 요구하는 파일 락을 네트워크 마운트 볼륨(Azure Files 등)에서 신뢰성 있게 지원하지 않는다 — 재현 시 `SQLite Error 5: database is locked`.

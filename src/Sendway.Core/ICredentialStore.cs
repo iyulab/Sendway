@@ -6,9 +6,8 @@ public interface ICredentialStore
 
     Task SetAsync<T>(Guid? tenantId, string channel, T value, CancellationToken cancellationToken = default) where T : class;
 
-    // Removes a tenant's override, falling back to the shared default (or "unconfigured" if none
-    // exists) — the only way to revert a tenant off a channel once PUT has set one. Deleting the
-    // shared default itself (tenantId: null) is out of scope: no caller needs it, and it would be a
-    // far more destructive action than reverting a single tenant's override.
-    Task DeleteAsync(Guid tenantId, string channel, CancellationToken cancellationToken = default);
+    // Removes a tenant's override, so the tenant falls back to the shared default (or to
+    // "unconfigured" if there is none). With tenantId null it removes the shared default itself,
+    // which leaves every tenant without an override unconfigured on that channel.
+    Task DeleteAsync(Guid? tenantId, string channel, CancellationToken cancellationToken = default);
 }

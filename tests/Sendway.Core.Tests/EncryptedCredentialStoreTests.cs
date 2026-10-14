@@ -149,4 +149,17 @@ public class EncryptedCredentialStoreTests : IAsyncLifetime
         Assert.NotNull(result);
         Assert.Equal("keep-me.example.com", result!.Host);
     }
+
+    [Fact]
+    public async Task DeleteAsync_NullTenantId_RemovesTheSharedDefaultButNotOverrides()
+    {
+        var tenantId = Guid.NewGuid();
+        await _store.SetAsync<SmtpOptions>(null, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "shared.example.com", FromAddress = "shared@example.com" });
+        await _store.SetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp, new SmtpOptions { Host = "tenant.example.com", FromAddress = "tenant@example.com" });
+
+        await _store.DeleteAsync(null, ChannelCredentialNames.Smtp);
+
+        Assert.Null(await _store.GetAsync<SmtpOptions>(null, ChannelCredentialNames.Smtp));
+        Assert.Equal("tenant.example.com", (await _store.GetAsync<SmtpOptions>(tenantId, ChannelCredentialNames.Smtp))!.Host);
+    }
 }
