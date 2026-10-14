@@ -1,6 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Sendway.Core;
 using Xunit;
 
@@ -43,7 +40,7 @@ public class SmtpConnectionLimitTests
     [Fact]
     public async Task SendAsync_NeverOpensMoreConnectionsToOneAccountThanItsLimit()
     {
-        await using var server = new RecordingSmtpServer(TimeSpan.FromMilliseconds(300));
+        await using var server = new TestSmtpServer(TimeSpan.FromMilliseconds(300));
         var sender = new SmtpEmailSender(new SingleCredentialStore(ChannelCredentialNames.Smtp, new SmtpOptions
         {
             Host = "127.0.0.1", Port = server.Port, MaxConnections = 2, FromAddress = "sender@example.com"
@@ -59,7 +56,7 @@ public class SmtpConnectionLimitTests
     [Fact]
     public async Task SendAsync_WithoutALimit_SendsInParallel()
     {
-        await using var server = new RecordingSmtpServer(TimeSpan.FromMilliseconds(300));
+        await using var server = new TestSmtpServer(TimeSpan.FromMilliseconds(300));
         var sender = new SmtpEmailSender(new SingleCredentialStore(ChannelCredentialNames.Smtp, new SmtpOptions
         {
             Host = "127.0.0.1", Port = server.Port, FromAddress = "sender@example.com"
@@ -74,7 +71,7 @@ public class SmtpConnectionLimitTests
     [Fact]
     public async Task SendAsync_WaitingForAConnection_StopsWhenTheAttemptIsCancelled()
     {
-        await using var server = new RecordingSmtpServer(TimeSpan.FromSeconds(2));
+        await using var server = new TestSmtpServer(TimeSpan.FromSeconds(2));
         var sender = new SmtpEmailSender(new SingleCredentialStore(ChannelCredentialNames.Smtp, new SmtpOptions
         {
             Host = "127.0.0.1", Port = server.Port, MaxConnections = 1, FromAddress = "sender@example.com"
@@ -88,115 +85,5 @@ public class SmtpConnectionLimitTests
             sender.SendAsync(new EmailMessage(Guid.NewGuid(), ["b@example.com"], "s", "b"), cancellation.Token));
         await first;
         Assert.Equal(1, server.Delivered);
-    }
-
-    // Accepts every message after `delay`, and records how many sessions were open at once.
-    private sealed class RecordingSmtpServer : IAsyncDisposable
-    {
-        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-        private readonly TimeSpan _delay;
-        private readonly CancellationTokenSource _stop = new();
-        private readonly Task _accepting;
-        private int _open;
-        private int _maxOpen;
-        private int _delivered;
-
-        public RecordingSmtpServer(TimeSpan delay)
-        {
-            _delay = delay;
-            _listener.Start();
-            _accepting = AcceptAsync();
-        }
-
-        public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
-
-        public int MaxConcurrentSessions => Volatile.Read(ref _maxOpen);
-
-        public int Delivered => Volatile.Read(ref _delivered);
-
-        private async Task AcceptAsync()
-        {
-            try
-            {
-                while (true)
-                {
-                    var client = await _listener.AcceptTcpClientAsync(_stop.Token);
-                    _ = ServeAsync(client);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        private async Task ServeAsync(TcpClient client)
-        {
-            var open = Interlocked.Increment(ref _open);
-            int seen;
-            while ((seen = Volatile.Read(ref _maxOpen)) < open && Interlocked.CompareExchange(ref _maxOpen, open, seen) != seen)
-            {
-            }
-
-            try
-            {
-                using (client)
-                {
-                    var stream = client.GetStream();
-                    using var reader = new StreamReader(stream, Encoding.ASCII);
-                    await using var writer = new StreamWriter(stream, Encoding.ASCII) { NewLine = "\r\n", AutoFlush = true };
-                    await writer.WriteLineAsync("220 test");
-                    var inData = false;
-                    while (await reader.ReadLineAsync() is { } line)
-                    {
-                        if (inData)
-                        {
-                            if (line == ".")
-                            {
-                                inData = false;
-                                await Task.Delay(_delay);
-                                Interlocked.Increment(ref _delivered);
-                                await writer.WriteLineAsync("250 queued");
-                            }
-
-                            continue;
-                        }
-
-                        var verb = line.Split(' ')[0].ToUpperInvariant();
-                        if (verb is "EHLO" or "HELO")
-                        {
-                            await writer.WriteLineAsync("250 test");
-                        }
-                        else if (verb == "DATA")
-                        {
-                            inData = true;
-                            await writer.WriteLineAsync("354 go ahead");
-                        }
-                        else if (verb == "QUIT")
-                        {
-                            await writer.WriteLineAsync("221 bye");
-                            break;
-                        }
-                        else
-                        {
-                            await writer.WriteLineAsync("250 ok");
-                        }
-                    }
-                }
-            }
-            catch (IOException)
-            {
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _open);
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            _stop.Cancel();
-            _listener.Stop();
-            await _accepting;
-        }
     }
 }

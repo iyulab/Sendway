@@ -1,21 +1,27 @@
 using System.Collections.Concurrent;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 
 namespace Sendway.Core;
 
-public sealed class SmtpEmailSender : IEmailSender
+public sealed class SmtpEmailSender : IEmailSender, IDisposable
 {
     private readonly ICredentialStore _credentialStore;
+    private readonly SmtpConnectionPool _pool;
 
     // One gate per sending account that has a connection limit, shared by every tenant that sends
     // through it — the provider counts connections per account, not per caller.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _accountGates = new(StringComparer.OrdinalIgnoreCase);
 
-    public SmtpEmailSender(ICredentialStore credentialStore)
+    public SmtpEmailSender(ICredentialStore credentialStore, TimeProvider? timeProvider = null)
     {
         _credentialStore = credentialStore;
+        _pool = new SmtpConnectionPool(timeProvider ?? TimeProvider.System);
     }
 
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
@@ -33,21 +39,29 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var (host, port) = SmtpProviderPresets.Resolve(options);
 
+        var account = $"{host}:{port}:{options.Username ?? options.FromAddress}";
+
+        // A kept connection was authenticated with the password of its time; a changed password must
+        // not keep using it.
+        var session = $"{account}:{Fingerprint(options.Password)}";
+
         // Waiting for a connection is part of the attempt: it ends with the attempt's own time limit.
+        // Kept connections count against the limit too, which holds because a new connection is opened
+        // only when no kept one is free.
         var gate = SmtpProviderPresets.MaxConnections(options) is { } limit
-            ? _accountGates.GetOrAdd($"{host}:{port}:{options.Username ?? options.FromAddress}:{limit}", _ => new SemaphoreSlim(limit, limit))
+            ? _accountGates.GetOrAdd($"{account}:{limit}", _ => new SemaphoreSlim(limit, limit))
             : null;
 
         if (gate is null)
         {
-            await SendAsync(options, host, port, mimeMessage, cancellationToken);
+            await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
             return;
         }
 
         await gate.WaitAsync(cancellationToken);
         try
         {
-            await SendAsync(options, host, port, mimeMessage, cancellationToken);
+            await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
         }
         finally
         {
@@ -55,26 +69,67 @@ public sealed class SmtpEmailSender : IEmailSender
         }
     }
 
-    private static async Task SendAsync(SmtpOptions options, string host, int port, MimeMessage mimeMessage, CancellationToken cancellationToken)
+    public void Dispose() => _pool.Dispose();
+
+    private async Task DeliverAsync(string session, SmtpOptions options, string host, int port, MimeMessage mimeMessage, CancellationToken cancellationToken)
     {
-        // A fresh SmtpClient per send — one that failed to connect/authenticate isn't assumed
-        // reusable when the message is attempted again.
-        using var client = new SmtpClient();
-        await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
-
-        if (!string.IsNullOrEmpty(options.Username))
+        if (_pool.TryTake(session) is { } kept)
         {
-            if (string.IsNullOrEmpty(options.Password))
+            try
             {
-                throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
+                await kept.SendAsync(mimeMessage, cancellationToken);
+                _pool.Return(session, kept);
+                return;
             }
-
-            await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
+            catch (Exception ex) when (IsClosedConnection(ex) && !cancellationToken.IsCancellationRequested)
+            {
+                // The server closed the kept connection since; that is not this message's failure.
+                // It goes out on a new connection below, within the same attempt.
+                kept.Dispose();
+            }
+            catch
+            {
+                kept.Dispose();
+                throw;
+            }
         }
 
-        await client.SendAsync(mimeMessage, cancellationToken);
-        await client.DisconnectAsync(true, cancellationToken);
+        var client = new SmtpClient();
+        try
+        {
+            await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
+
+            if (!string.IsNullOrEmpty(options.Username))
+            {
+                if (string.IsNullOrEmpty(options.Password))
+                {
+                    throw new InvalidOperationException("SmtpOptions.Password is required when Username is set.");
+                }
+
+                await client.AuthenticateAsync(options.Username, options.Password, cancellationToken);
+            }
+
+            await client.SendAsync(mimeMessage, cancellationToken);
+        }
+        catch
+        {
+            // A connection that failed anywhere is never kept: it is not assumed usable again.
+            client.Dispose();
+            throw;
+        }
+
+        _pool.Return(session, client);
     }
+
+    private static bool IsClosedConnection(Exception exception) => exception
+        is ServiceNotConnectedException
+        or IOException
+        or SocketException
+        or SmtpProtocolException
+        or SmtpCommandException { StatusCode: SmtpStatusCode.ServiceNotAvailable };
+
+    private static string Fingerprint(string? secret) =>
+        secret is null ? "" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)))[..16];
 
     // htmlBody absent → single plain-text part, byte-identical to pre-HTML-support wire format.
     // htmlBody present → multipart/alternative with plain-text kept as the mandatory fallback part,
