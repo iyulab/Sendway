@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -7,6 +8,10 @@ namespace Sendway.Core;
 public sealed class SmtpEmailSender : IEmailSender
 {
     private readonly ICredentialStore _credentialStore;
+
+    // One gate per sending account that has a connection limit, shared by every tenant that sends
+    // through it — the provider counts connections per account, not per caller.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _accountGates = new(StringComparer.OrdinalIgnoreCase);
 
     public SmtpEmailSender(ICredentialStore credentialStore)
     {
@@ -28,6 +33,30 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var (host, port) = SmtpProviderPresets.Resolve(options);
 
+        // Waiting for a connection is part of the attempt: it ends with the attempt's own time limit.
+        var gate = SmtpProviderPresets.MaxConnections(options) is { } limit
+            ? _accountGates.GetOrAdd($"{host}:{port}:{options.Username ?? options.FromAddress}:{limit}", _ => new SemaphoreSlim(limit, limit))
+            : null;
+
+        if (gate is null)
+        {
+            await SendAsync(options, host, port, mimeMessage, cancellationToken);
+            return;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await SendAsync(options, host, port, mimeMessage, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task SendAsync(SmtpOptions options, string host, int port, MimeMessage mimeMessage, CancellationToken cancellationToken)
+    {
         // A fresh SmtpClient per send — one that failed to connect/authenticate isn't assumed
         // reusable when the message is attempted again.
         using var client = new SmtpClient();

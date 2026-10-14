@@ -32,6 +32,11 @@ public static class ChannelCredentialValidator
             return "password is required when username is set.";
         }
 
+        if (options.MaxConnections is < 1)
+        {
+            return "maxConnections must be at least 1.";
+        }
+
         return null;
     }
 
