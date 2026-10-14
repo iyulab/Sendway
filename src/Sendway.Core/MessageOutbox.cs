@@ -46,6 +46,13 @@ public sealed class MessageOutbox : IMessageOutbox
             return existing;
         }
 
+        // Checked after the replay lookup, so a retry of an accepted request is answered the same way
+        // even if the credential has gone since.
+        if (!await CanSendAsync(db, submission.TenantId, submission.Channel, cancellationToken))
+        {
+            return new EnqueueResult(EnqueueOutcome.ChannelNotConfigured, null);
+        }
+
         var record = new MessageRecord
         {
             Id = Guid.NewGuid(),
@@ -140,6 +147,41 @@ public sealed class MessageOutbox : IMessageOutbox
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         return await _queue.GetStatsAsync(db, cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<string, int>> CountUnsendableAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var unfinished = await db.MessageRecords
+            .AsNoTracking()
+            .Where(m => m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending)
+            .GroupBy(m => new { m.TenantId, m.Channel })
+            .Select(g => new { g.Key.TenantId, g.Key.Channel, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var unsendable = new Dictionary<string, int>();
+        foreach (var group in unfinished)
+        {
+            if (!await CanSendAsync(db, group.TenantId, group.Channel, cancellationToken))
+            {
+                unsendable[group.Channel] = unsendable.GetValueOrDefault(group.Channel) + group.Count;
+            }
+        }
+
+        return unsendable;
+    }
+
+    // Whether a credential that lets the tenant send on the channel is stored — its own or the shared
+    // one. Only that a row exists is asked: decrypting here would turn a lost key ring into a refusal
+    // to accept, where it is meant to surface as failed deliveries.
+    private static Task<bool> CanSendAsync(SendwayDbContext db, Guid tenantId, string channel, CancellationToken cancellationToken)
+    {
+        var credentials = MessageChannels.CredentialsFor(channel);
+
+        return db.ChannelCredentials.AnyAsync(
+            c => credentials.Contains(c.Channel) && (c.TenantId == tenantId || c.TenantId == Guid.Empty),
+            cancellationToken);
     }
 
     // Recording the final outcome and queueing the event that announces it happen in one

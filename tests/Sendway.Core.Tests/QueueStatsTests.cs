@@ -18,6 +18,7 @@ public class QueueStatsTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.CreateAsync();
+        await _database.AllowEveryChannelAsync();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         _messages = new MessageOutbox(_database.Factory, dataProtection, _time, new WebhookDeliverySignal());

@@ -17,6 +17,7 @@ public class MessageOutboxTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.CreateAsync();
+        await _database.AllowEveryChannelAsync();
         _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
     }
 
@@ -293,5 +294,63 @@ public class MessageOutboxTests : IAsyncLifetime
         Assert.Equal(DeliveryStatus.Sending, stored.Status);
         Assert.Null(stored.Error);
         Assert.Equal(2, stored.AttemptCount);
+    }
+
+    private async Task SetCredentialsAsync(params (Guid TenantId, string Channel)[] credentials)
+    {
+        await using var db = await _database.Factory.CreateDbContextAsync();
+        db.ChannelCredentials.RemoveRange(db.ChannelCredentials);
+        foreach (var (tenantId, channel) in credentials)
+        {
+            db.ChannelCredentials.Add(new ChannelCredential { TenantId = tenantId, Channel = channel, EncryptedPayload = "unused" });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Enqueue_OnAChannelNoCredentialServes_StoresNothing()
+    {
+        await SetCredentialsAsync((Guid.Empty, ChannelCredentialNames.Fcm));
+
+        var result = await _outbox.EnqueueAsync(Submission(key: "k"));
+
+        Assert.Equal(EnqueueOutcome.ChannelNotConfigured, result.Outcome);
+        Assert.Null(result.Record);
+        await using var db = await _database.Factory.CreateDbContextAsync();
+        Assert.Empty(db.MessageRecords);
+    }
+
+    [Theory]
+    [InlineData(ChannelCredentialNames.Smtp)]
+    [InlineData(ChannelCredentialNames.EmailGraph)]
+    public async Task Enqueue_WithOnlyTheTenantsOwnCredential_Accepts(string credential)
+    {
+        await SetCredentialsAsync((_tenantId, credential));
+
+        var accepted = await _outbox.EnqueueAsync(Submission());
+        var otherTenant = await _outbox.EnqueueAsync(Submission(tenantId: Guid.NewGuid()));
+
+        Assert.Equal(EnqueueOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(EnqueueOutcome.ChannelNotConfigured, otherTenant.Outcome);
+    }
+
+    [Fact]
+    public async Task CountUnsendable_CountsUnfinishedMessagesWhoseCredentialIsGone_PerChannel()
+    {
+        var sent = await _outbox.EnqueueAsync(Submission(payload: "sent"));
+        await _outbox.EnqueueAsync(Submission(payload: "waiting 1"));
+        await _outbox.EnqueueAsync(Submission(payload: "waiting 2"));
+        await _outbox.EnqueueAsync(new MessageSubmission(_tenantId, MessageChannels.Push, "token", "push"));
+        var claim = (await _outbox.ClaimNextAsync(Lease))!;
+        await _outbox.MarkSentAsync(claim);
+        Assert.Equal(sent.Record!.Id, claim.Id);
+
+        Assert.Empty(await _outbox.CountUnsendableAsync());
+
+        await SetCredentialsAsync((Guid.Empty, ChannelCredentialNames.Fcm));
+
+        var unsendable = await _outbox.CountUnsendableAsync();
+        Assert.Equal(new Dictionary<string, int> { [MessageChannels.Email] = 2 }, unsendable);
     }
 }

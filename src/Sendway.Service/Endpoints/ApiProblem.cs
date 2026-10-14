@@ -20,6 +20,10 @@ public static class ApiProblem
     // A shared setting is supplied by configuration, so it cannot be changed through the API.
     public const string ManagedByConfiguration = "managed_by_configuration";
 
+    // No credential lets this tenant send on the channel yet, its own or a shared one. Nothing was
+    // stored; an administrator has to register one before the same request can be accepted.
+    public const string ChannelNotConfigured = "channel_not_configured";
+
     // The tenant's request rate limit was exceeded; see the Retry-After header.
     public const string RateLimited = "rate_limited";
 

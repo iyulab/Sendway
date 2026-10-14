@@ -37,6 +37,15 @@ public static class MessageAcceptance
         // whether the message was accepted.
         var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey));
 
+        if (result.Outcome == EnqueueOutcome.ChannelNotConfigured)
+        {
+            return ApiProblem.Create(
+                StatusCodes.Status409Conflict,
+                ApiProblem.ChannelNotConfigured,
+                $"Nothing can be sent on the '{channel}' channel for this service yet: no credential for it is registered, " +
+                "neither the service's own nor a shared one. Nothing was stored; an administrator has to register one first.");
+        }
+
         if (result.Outcome == EnqueueOutcome.KeyReused)
         {
             return ApiProblem.Create(
@@ -52,8 +61,7 @@ public static class MessageAcceptance
 
         // A replay answers exactly like the original acceptance — same status code, same message
         // ID — with the message's current status.
-        return Results.Accepted(
-            $"/messages/{result.Record.Id}",
-            new SendMessageResponse(result.Record.Id, result.Record.Status.ToString()));
+        var record = result.Record!;
+        return Results.Accepted($"/messages/{record.Id}", new SendMessageResponse(record.Id, record.Status.ToString()));
     }
 }

@@ -21,6 +21,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.CreateAsync();
+        await _database.AllowEveryChannelAsync();
         _outbox = new MessageOutbox(_database.Factory, new EphemeralDataProtectionProvider(), _time, new WebhookDeliverySignal());
         _processor = new MessageDeliveryProcessor(
             _outbox,

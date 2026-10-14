@@ -56,6 +56,20 @@ internal sealed class TestDatabase : IDisposable
         }
     }
 
+    // Stores a shared credential for every channel, so any tenant's message can be accepted. Only that
+    // the rows exist matters to acceptance; their content is never read in these tests.
+    public async Task AllowEveryChannelAsync()
+    {
+        await using var db = await Factory.CreateDbContextAsync();
+
+        foreach (var channel in new[] { ChannelCredentialNames.Smtp, ChannelCredentialNames.Fcm, ChannelCredentialNames.Solapi })
+        {
+            db.ChannelCredentials.Add(new ChannelCredential { TenantId = Guid.Empty, Channel = channel, EncryptedPayload = "unused" });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     public void Dispose()
     {
         try

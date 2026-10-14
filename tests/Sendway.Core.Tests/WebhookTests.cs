@@ -128,6 +128,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.CreateAsync();
+        await _database.AllowEveryChannelAsync();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         var signal = new WebhookDeliverySignal();

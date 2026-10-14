@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -19,8 +20,13 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
     public HealthEndpointTests(WebApplicationFactory<Program> factory)
     {
+        // "Testing", not the default Development: a developer's local appsettings.Development.json
+        // (shared credentials included) must not decide what these checks see.
         _factory = factory.WithWebHostBuilder(builder =>
-            builder.ConfigureAppConfiguration((context, configuration) => _storage.Apply(context, configuration)));
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((context, configuration) => _storage.Apply(context, configuration));
+        });
     }
 
     public void Dispose() => _storage.Dispose();
@@ -76,7 +82,7 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
         Assert.Empty(live.EnumerateObject());
         Assert.Equal(["database"], ready.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(["database", "messages", "webhooks"], full.EnumerateObject().Select(p => p.Name).Order());
+        Assert.Equal(["channels", "database", "messages", "webhooks"], full.EnumerateObject().Select(p => p.Name).Order());
         Assert.Equal(0, full.GetProperty("messages").GetProperty("failedInLast24Hours").GetInt32());
     }
 
@@ -101,7 +107,13 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task AnItemWaitingForItsRetry_IsNotABacklog()
     {
-        var factory = WithSettings(new() { ["Sendway:Health:MaxOldestDue"] = "00:01:00" });
+        var factory = WithSettings(new()
+        {
+            ["Sendway:Health:MaxOldestDue"] = "00:01:00",
+            // A channel the message can go out on, so only the waiting is judged.
+            ["Smtp:Host"] = "127.0.0.1",
+            ["Smtp:FromAddress"] = "sender@example.com"
+        });
         await AddMessageAsync(factory, DeliveryStatus.Queued, DateTimeOffset.UtcNow.AddMinutes(10));
 
         Assert.Equal(HttpStatusCode.OK, (await GetAsync(factory.CreateClient(), "/health")).Status);
@@ -150,6 +162,38 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
         Assert.DoesNotContain("user@example.com", raw + full);
         Assert.DoesNotContain("tenant", (raw + full).ToLowerInvariant());
+    }
+
+    // A message accepted while a credential existed, waiting after it was deleted: retrying cannot
+    // help, so the operator hears of it now rather than when the attempts run out.
+    [Fact]
+    public async Task AMessageWaitingOnAChannelWithNoCredential_Degrades_NamingTheChannelOnly()
+    {
+        await AddMessageAsync(_factory, DeliveryStatus.Queued, DateTimeOffset.UtcNow.AddMinutes(5));
+
+        var (status, body) = await GetAsync(_factory.CreateClient(), "/health");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, status);
+        Assert.Equal("Degraded", body.GetProperty("status").GetString());
+        var channels = body.GetProperty("checks").GetProperty("channels");
+        Assert.Equal("Degraded", channels.GetProperty("status").GetString());
+        Assert.Equal(1, channels.GetProperty("unsendable").GetProperty("email").GetInt32());
+    }
+
+    [Fact]
+    public async Task AMessageWaitingOnAChannelWithASharedCredential_IsHealthy()
+    {
+        var factory = WithSettings(new()
+        {
+            ["Smtp:Host"] = "127.0.0.1",
+            ["Smtp:FromAddress"] = "sender@example.com"
+        });
+        await AddMessageAsync(factory, DeliveryStatus.Queued, DateTimeOffset.UtcNow.AddMinutes(5));
+
+        var (status, body) = await GetAsync(factory.CreateClient(), "/health");
+
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal("Healthy", body.GetProperty("checks").GetProperty("channels").GetProperty("status").GetString());
     }
 
     [Fact]

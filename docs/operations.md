@@ -18,7 +18,7 @@ docker run -d --name sendway -p 8080:8080 \
 - **데이터베이스** — 빈 데이터베이스를 만들어 두면 Sendway가 시작할 때 스키마를 만들고, 이후 버전의 마이그레이션도 시작할 때 적용합니다. 그 계정에는 스키마를 바꿀 권한이 필요합니다.
 - **`/data` 볼륨** — Data Protection 키 링(`/data/dp-keys`)이 여기 있습니다. 저장된 채널 자격증명·웹훅 서명 비밀값·발송 대기 중인 메시지 내용이 이 키로 암호화되므로, 이 볼륨은 컨테이너보다 오래 살아야 하고 데이터베이스와 함께 백업합니다(「백업과 복구」).
 - **관리자 키** — 없으면 `/admin/*`가 모두 `401`이라 테넌트를 만들 수 없습니다.
-- **공용 채널 자격증명** — 테넌트가 따로 등록하지 않았을 때 쓰는 발신 계정입니다. 설정(`Smtp__*`, `Fcm__CredentialsJson`, `Solapi__*`)으로 주거나, 설정 없이 띄운 뒤 `PUT /admin/credentials/{channel}`로 등록합니다(「비밀값 교체」). 둘 다 없는 채널로 온 발송은 접수된 뒤 재시도 끝에 `Failed`가 됩니다.
+- **공용 채널 자격증명** — 테넌트가 따로 등록하지 않았을 때 쓰는 발신 계정입니다. 설정(`Smtp__*`, `Fcm__CredentialsJson`, `Solapi__*`)으로 주거나, 설정 없이 띄운 뒤 `PUT /admin/credentials/{channel}`로 등록합니다(「비밀값 교체」). 공용 값도 그 테넌트의 값도 없는 채널로 온 발송은 접수하지 않고 `409 channel_not_configured`로 거절합니다 — 보낼 수 없는 메시지를 받아 두었다가 재시도 끝에 실패시키지 않습니다.
 - 띄운 뒤 `curl http://localhost:8080/health`가 `200`이면 데이터베이스까지 닿은 것이고, `curl http://localhost:8080/admin/queues -H "X-Admin-Key: <관리자 키>"`가 `200`이면 관리자 키도 맞는 것입니다. 첫 테넌트를 만들고 보내 보는 방법은 [README](../README.md)의 「보내 보기」.
 
 데이터베이스 없이 잠깐 띄워 보는 SQLite 경로(`Sendway__DatabaseProvider=Sqlite`)는 로컬 시험용입니다 — 파일이 네트워크 볼륨에 있으면 잠금이 안정적이지 않고, 스키마를 마이그레이션 없이 만들기 때문에 이후 버전으로 올릴 수 없습니다.
@@ -64,18 +64,20 @@ docker run -d --name sendway -p 8080:8080 \
 |---|---|---|
 | `/health/live` | 프로세스가 응답하는지만(데이터베이스를 보지 않음) | 생존(liveness) 프로브 — 데이터베이스 장애로 멀쩡한 인스턴스가 재시작되지 않게 |
 | `/health/ready` | 데이터베이스에 닿는지 | 준비(readiness) 프로브 — 요청을 받을 수 있는지. 발송이 밀려도 접수는 계속되므로 대기열은 보지 않음 |
-| `/health` | 데이터베이스 + 메시지·웹훅 대기열 | 외부 감시(업타임 모니터 등)와 경보 — `Healthy`가 아니면 `503` |
+| `/health` | 데이터베이스 + 메시지·웹훅 대기열 + 채널 자격증명 | 외부 감시(업타임 모니터 등)와 경보 — `Healthy`가 아니면 `503` |
 
 ```bash
 curl http://localhost:8080/health
 # → {"status": "Healthy", "checks": {
 #      "database": {"status": "Healthy", "description": null},
 #      "messages": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0},
-#      "webhooks": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0}}}
+#      "webhooks": {"status": "Healthy", "description": null, "oldestDueSeconds": 0, "failedInLast24Hours": 0},
+#      "channels": {"status": "Healthy", "description": null, "unsendable": {}}}}
 ```
 
 - **발송이 멈추거나 밀림** — 가져갈 수 있는 항목이 `Sendway:Health:MaxOldestDue`(기본 5분)보다 오래 기다리면 그 대기열이 `Unhealthy`입니다. 재시도 시각을 기다리는 항목은 세지 않으므로, 정상이면 부하와 무관하게 0 근처입니다.
 - **실패가 늘어남** — `Sendway:Health:MaxFailedInLast24Hours`를 정하면 그 수를 넘을 때 `Degraded`입니다. 없는 주소처럼 정상적인 실패도 있어 얼마가 많은지는 배포마다 다르므로 기본으로는 판정하지 않습니다.
+- **보낼 수 없는 채널에 메시지가 있음** — 접수된 뒤 그 채널의 자격증명이 지워져(테넌트 값도 공용 값도 없음) 끝나지 않은 메시지가 남아 있으면 `channels`가 `Degraded`이고, `unsendable`이 채널별 건수를 보여 줍니다. 자격증명을 다시 등록하면 남은 재시도 안에 나갑니다.
 - 경보는 `/health`가 `503`인 동안으로 걸면 충분합니다. 본문의 `description`이 어느 대기열이 왜 그런지 말합니다.
 - 대기열 수치는 인스턴스마다 5초 동안 공유됩니다 — 키 없이 자주 불러도 매번 집계하지 않습니다. 데이터베이스에 닿지 못한 이유(연결 문자열이 담길 수 있음)는 응답이 아니라 로그에만 남습니다.
 

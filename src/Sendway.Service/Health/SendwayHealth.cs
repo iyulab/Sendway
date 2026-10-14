@@ -54,6 +54,13 @@ public static class SendwayHealth
                     sp.GetRequiredService<IOptions<HealthOptions>>().Value),
                 failureStatus: null,
                 tags: null,
+                timeout: CheckTimeout))
+            .Add(new HealthCheckRegistration(
+                "channels",
+                sp => new ChannelsHealthCheck(
+                    ct => sp.GetRequiredService<SharedQueueStats>().GetAsync("unsendable", sp.GetRequiredService<IMessageOutbox>().CountUnsendableAsync, ct)),
+                failureStatus: null,
+                tags: null,
                 timeout: CheckTimeout));
         return services;
     }
@@ -149,26 +156,48 @@ public sealed class QueueHealthCheck(Func<CancellationToken, Task<QueueStats>> g
     }
 }
 
-// The health endpoints need no key, so without this anyone could make the database count both queues
-// on every request — and most cheaply when it is already struggling. One count per queue per
-// Lifetime is shared by every caller on this instance.
+// The health endpoints need no key, so without this anyone could make the database count the queues
+// on every request — and most cheaply when it is already struggling. Each count is read at most once
+// per Lifetime, shared by every caller on this instance.
 public sealed class SharedQueueStats(TimeProvider timeProvider)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(5);
 
-    private readonly ConcurrentDictionary<string, (DateTimeOffset ReadAt, Task<QueueStats> Stats)> _latest = new();
+    private readonly ConcurrentDictionary<string, (DateTimeOffset ReadAt, Task Read)> _latest = new();
 
-    public Task<QueueStats> GetAsync(string queue, Func<CancellationToken, Task<QueueStats>> read, CancellationToken cancellationToken)
+    public Task<T> GetAsync<T>(string name, Func<CancellationToken, Task<T>> read, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
 
         // The count runs without the caller's token because other callers share it; each caller
         // stops waiting on its own token.
         var entry = _latest.AddOrUpdate(
-            queue,
+            name,
             _ => (now, read(CancellationToken.None)),
-            (_, latest) => now - latest.ReadAt < Lifetime && !latest.Stats.IsFaulted ? latest : (now, read(CancellationToken.None)));
+            (_, latest) => now - latest.ReadAt < Lifetime && !latest.Read.IsFaulted ? latest : (now, read(CancellationToken.None)));
 
-        return entry.Stats.WaitAsync(cancellationToken);
+        return ((Task<T>)entry.Read).WaitAsync(cancellationToken);
+    }
+}
+
+// Messages waiting on a channel that no stored credential lets their tenant send on — a credential
+// deleted after they were accepted. They would only be retried until they fail, so the operator is
+// told now. Reports a count per channel, never which tenant.
+public sealed class ChannelsHealthCheck(Func<CancellationToken, Task<IReadOnlyDictionary<string, int>>> countUnsendable) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var unsendable = await countUnsendable(cancellationToken);
+        var data = new Dictionary<string, object> { ["unsendable"] = unsendable };
+
+        if (unsendable.Count == 0)
+        {
+            return HealthCheckResult.Healthy(data: data);
+        }
+
+        var channels = string.Join(", ", unsendable.Select(c => $"{c.Key} ({c.Value})"));
+        return HealthCheckResult.Degraded(
+            $"Messages are waiting on channels with no credential to send them: {channels}.",
+            data: data);
     }
 }
