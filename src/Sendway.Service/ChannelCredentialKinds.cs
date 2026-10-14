@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Sendway.Core;
 
 namespace Sendway.Service;
@@ -27,9 +28,9 @@ public abstract class ChannelCredentialKind
     public bool IsConfigured(IConfiguration configuration) =>
         ConfigurationSection is { } section && configuration.GetSection(section).Exists();
 
-    // Reads the credential from the request body, checks it and stores it. Returns what is wrong
-    // with it, or null once it is stored.
-    public abstract Task<string?> SetAsync(HttpRequest request, Guid? tenantId, CancellationToken cancellationToken);
+    // Reads the credential from a request body, checks it and stores it. Returns what is wrong with
+    // it, or null once it is stored.
+    public abstract Task<string?> SetAsync(JsonElement body, IServiceProvider services, Guid? tenantId, CancellationToken cancellationToken);
 
     public abstract Task DeleteAsync(HttpContext httpContext, Guid? tenantId, CancellationToken cancellationToken);
 
@@ -87,18 +88,22 @@ internal sealed class ChannelCredentialKind<T> : ChannelCredentialKind where T :
         _changed = changed;
     }
 
-    public override async Task<string?> SetAsync(HttpRequest request, Guid? tenantId, CancellationToken cancellationToken)
+    public override async Task<string?> SetAsync(JsonElement body, IServiceProvider services, Guid? tenantId, CancellationToken cancellationToken)
     {
-        // A body that isn't JSON, or lacks a required property, is the caller's mistake and is
-        // answered as one — left to the framework it would surface as a 500.
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            return "The credential must be a JSON object.";
+        }
+
         T? options;
         try
         {
-            options = await request.ReadFromJsonAsync<T>(cancellationToken);
+            options = body.Deserialize<T>(ChannelCredentialJson.Options);
         }
         catch (JsonException ex)
         {
-            return $"The credential could not be read: {ex.Message}";
+            // The serializer's own message names the service's types; the path is all the caller needs.
+            return $"{ChannelCredentialJson.FieldName(ex.Path)} has a value of the wrong type.";
         }
 
         if (options is null)
@@ -111,7 +116,6 @@ internal sealed class ChannelCredentialKind<T> : ChannelCredentialKind where T :
             return error;
         }
 
-        var services = request.HttpContext.RequestServices;
         await services.GetRequiredService<ICredentialStore>().SetAsync(tenantId, Name, options, cancellationToken);
         _changed?.Invoke(services, tenantId);
         return null;
@@ -134,4 +138,31 @@ internal sealed class ChannelCredentialKind<T> : ChannelCredentialKind where T :
             await store.SetAsync(null, Name, options, cancellationToken);
         }
     }
+}
+
+internal static class ChannelCredentialJson
+{
+    // Request bodies are read with the web defaults, except that no property is required: a missing
+    // one arrives empty and the channel's validator says which it is in the body's own terms, where
+    // the serializer would refuse it naming the service's types.
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver
+        {
+            Modifiers =
+            {
+                typeInfo =>
+                {
+                    foreach (var property in typeInfo.Properties)
+                    {
+                        property.IsRequired = false;
+                    }
+                }
+            }
+        }
+    };
+
+    // "$.port" -> "port"; the root itself has no field name.
+    public static string FieldName(string? path) =>
+        path is null or "$" ? "The credential" : path.StartsWith("$.", StringComparison.Ordinal) ? path[2..] : path;
 }

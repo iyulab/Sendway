@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sendway.Core;
 
 namespace Sendway.Service.Endpoints.Admin;
@@ -9,7 +10,8 @@ public static class SetTenantCredentialEndpoint
         group.MapPut("/tenants/{id:guid}/credentials/{channel}", async (
             Guid id,
             string channel,
-            HttpRequest request,
+            JsonElement body,
+            HttpContext httpContext,
             ITenantStore tenantStore,
             CancellationToken cancellationToken) =>
         {
@@ -24,7 +26,7 @@ public static class SetTenantCredentialEndpoint
                 return ApiProblem.BadRequest($"Unknown channel '{channel}'.");
             }
 
-            return await kind.SetAsync(request, tenant.Id, cancellationToken) is { } error
+            return await kind.SetAsync(body, httpContext.RequestServices, tenant.Id, cancellationToken) is { } error
                 ? ApiProblem.BadRequest(error)
                 : Results.NoContent();
         });

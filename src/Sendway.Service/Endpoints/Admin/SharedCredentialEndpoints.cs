@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sendway.Core;
 
 namespace Sendway.Service.Endpoints.Admin;
@@ -26,14 +27,14 @@ public static class SharedCredentialEndpoints
             return Results.Ok(credentials);
         });
 
-        group.MapPut("/credentials/{channel}", async (string channel, HttpRequest request, IConfiguration configuration, CancellationToken cancellationToken) =>
+        group.MapPut("/credentials/{channel}", async (string channel, JsonElement body, HttpContext httpContext, IConfiguration configuration, CancellationToken cancellationToken) =>
         {
             if (Refusal(channel, configuration, out var kind) is { } refusal)
             {
                 return refusal;
             }
 
-            return await kind.SetAsync(request, tenantId: null, cancellationToken) is { } error
+            return await kind.SetAsync(body, httpContext.RequestServices, tenantId: null, cancellationToken) is { } error
                 ? ApiProblem.BadRequest(error)
                 : Results.NoContent();
         });

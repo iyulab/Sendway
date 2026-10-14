@@ -250,6 +250,49 @@ public class TenantCredentialOverrideTests : IClassFixture<WebApplicationFactory
         Assert.False(await db.ChannelCredentials.AnyAsync(c => c.TenantId == created.TenantId));
     }
 
+    // The detail is for the operator who sent the credential: it names the field in the body's own
+    // terms and never the service's internal types.
+    [Theory]
+    [InlineData("solapi", "{}", "apiKey is required.")]
+    [InlineData("solapi", "{\"apiKey\":\"k\",\"apiSecret\":\"s\"}", "from must be the registered sender number, digits only (e.g. 0212345678).")]
+    [InlineData("email-graph", "{\"clientId\":\"c\"}", "directoryId is required.")]
+    [InlineData("fcm", "{}", "credentialsJson is required.")]
+    [InlineData("smtp", "{\"host\":\"smtp.example.com\"}", "fromAddress must be a valid email address.")]
+    [InlineData("smtp", "{\"host\":\"smtp.example.com\",\"fromAddress\":\"a@example.com\",\"port\":true}", "port has a value of the wrong type.")]
+    [InlineData("smtp", "[]", "The credential must be a JSON object.")]
+    public async Task SetCredential_Refused_SaysWhatIsWrongInTheBodysTerms(string channel, string body, string expectedDetail)
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var response = await adminClient.PutAsync(
+            $"/admin/tenants/{created!.TenantId}/credentials/{channel}",
+            new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>();
+        Assert.Equal(expectedDetail, problem!.Detail);
+    }
+
+    [Fact]
+    public async Task SetCredential_BodyNotJson_Returns415()
+    {
+        var adminClient = _factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin-Key", AdminApiKey);
+        var created = await (await adminClient.PostAsJsonAsync("/admin/tenants", new CreateTenantRequest("billing-service")))
+            .Content.ReadFromJsonAsync<CreateTenantResponse>();
+
+        var response = await adminClient.PutAsync(
+            $"/admin/tenants/{created!.TenantId}/credentials/smtp",
+            new StringContent("host=smtp.example.com", System.Text.Encoding.UTF8, "text/plain"));
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>();
+        Assert.Equal("invalid_request", problem!.Code);
+    }
+
     [Fact]
     public async Task SetCredential_SmtpProviderGivenByName_IsAccepted()
     {
