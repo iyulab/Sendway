@@ -51,6 +51,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
+      - name: No known vulnerable packages
+        run: scripts/audit-packages.sh
+
       - run: dotnet build Sendway.slnx --configuration Release
 
       - run: dotnet test Sendway.slnx --configuration Release --no-build
