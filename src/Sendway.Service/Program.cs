@@ -91,6 +91,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
 
 builder.Services.AddOptions<MessageDeliveryOptions>().BindConfiguration("Sendway:Delivery");
+builder.Services.AddOptions<TenantLimitOptions>().BindConfiguration("Sendway:Limits");
 builder.Services.AddSingleton<MessageDeliverySignal>();
 builder.Services.AddSingleton<MessageDeliveryProcessor>();
 builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<MessageDeliveryProcessor>());
@@ -144,6 +145,7 @@ var admin = app.MapGroup("/admin")
 admin.MapCreateTenantEndpoint();
 admin.MapListTenantsEndpoint();
 admin.MapSetTenantActiveEndpoint();
+admin.MapSetTenantLimitsEndpoint();
 admin.MapRotateTenantKeyEndpoint();
 admin.MapSetTenantCredentialEndpoint();
 admin.MapDeleteTenantCredentialEndpoint();

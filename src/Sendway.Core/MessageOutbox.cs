@@ -53,6 +53,18 @@ public sealed class MessageOutbox : IMessageOutbox
             return new EnqueueResult(EnqueueOutcome.ChannelNotConfigured, null);
         }
 
+        // Counted after the replay lookup too: a retry of an accepted request is not a new message.
+        if (submission.PerDay is { } perDay)
+        {
+            var since = now - TenantLimits.Window;
+            var recent = db.MessageRecords.Where(m => m.TenantId == submission.TenantId && m.Channel == submission.Channel && m.AcceptedAt > since);
+            if (await recent.CountAsync(cancellationToken) >= perDay)
+            {
+                var oldest = await recent.MinAsync(m => m.AcceptedAt, cancellationToken);
+                return new EnqueueResult(EnqueueOutcome.DailyLimitReached, null, oldest + TenantLimits.Window - now);
+            }
+        }
+
         var record = new MessageRecord
         {
             Id = Guid.NewGuid(),

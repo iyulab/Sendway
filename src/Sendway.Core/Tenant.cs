@@ -21,6 +21,16 @@ public sealed class Tenant
     // providers. For a calling service's development and test environments. Set at creation only.
     public bool Sandbox { get; init; }
 
+    // This tenant's own limits (TenantLimits); null means the deployment's default. SmsCountries is a
+    // comma-separated list of country calling codes.
+    public string? SmsCountries { get; set; }
+
+    public int? SmsPerDay { get; set; }
+
+    public int? EmailPerDay { get; set; }
+
+    public int? PushPerDay { get; set; }
+
     public required DateTimeOffset CreatedAt { get; init; }
 
     // When the previous key stops working, or null when it no longer works at `now`.

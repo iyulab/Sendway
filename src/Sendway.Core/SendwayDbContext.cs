@@ -47,6 +47,9 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
             // the last message sent on a channel, the failures of the last 24 hours. Kept rows grow
             // without limit, so these must not scan them.
             message.HasIndex(m => new { m.Status, m.Channel, m.CompletedAt });
+
+            // Serves the per-tenant daily limit: a tenant's messages on a channel in the last 24 hours.
+            message.HasIndex(m => new { m.TenantId, m.Channel, m.AcceptedAt });
         });
 
         modelBuilder.Entity<Tenant>(tenant =>

@@ -143,6 +143,8 @@ namespace Sendway.Core.Migrations
 
                     b.HasIndex("Status", "Channel", "CompletedAt");
 
+                    b.HasIndex("TenantId", "Channel", "AcceptedAt");
+
                     b.ToTable("MessageRecords");
                 });
 
@@ -162,6 +164,9 @@ namespace Sendway.Core.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("EmailPerDay")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -172,8 +177,17 @@ namespace Sendway.Core.Migrations
                     b.Property<string>("PreviousApiKeyHash")
                         .HasColumnType("text");
 
+                    b.Property<int?>("PushPerDay")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("Sandbox")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("SmsCountries")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("SmsPerDay")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 

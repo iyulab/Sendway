@@ -136,18 +136,60 @@ public class SendSmsEndpointTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task Post_WhenTheProviderCannotTakeTheMessage_Returns400WithoutStoringIt()
+    public async Task Post_ToACountryTheTenantMayNotSendTo_Returns400UntilAnAdministratorAllowsIt()
     {
-        _fakeSmsSender.RefuseWith("SMS to +1 numbers is not available.");
         var client = CreateAuthenticatedClient();
 
-        var response = await client.PostAsJsonAsync("/messages/sms", new SendSmsRequest("+15551234567", "Body"));
+        var refused = await client.PostAsJsonAsync("/messages/sms", new SendSmsRequest("+819012345678", "Body"));
+        var problem = await refused.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Equal("destination_not_allowed", problem!["code"].ToString());
+
+        var set = await CreateAdminClient().PutAsJsonAsync($"/admin/tenants/{_tenantId}/limits", new { smsCountries = new[] { "82", "81" } });
+        Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+
+        var allowed = await client.PostAsJsonAsync("/messages/sms", new SendSmsRequest("+819012345678", "Body"));
+        Assert.Equal(HttpStatusCode.Accepted, allowed.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_OverTheDailyLimit_Returns429WithRetryAfter_ButAReplayIsStillAnswered()
+    {
+        await CreateAdminClient().PutAsJsonAsync($"/admin/tenants/{_tenantId}/limits", new { smsPerDay = 1 });
+        var client = CreateAuthenticatedClient();
+
+        var first = await client.SendAsync(Sms("key-1", "first"));
+        var replay = await client.SendAsync(Sms("key-1", "first"));
+        var over = await client.SendAsync(Sms("key-2", "second"));
+
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, replay.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, over.StatusCode);
+        var problem = await over.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.Equal("daily_limit_reached", problem!["code"].ToString());
+        Assert.True(over.Headers.RetryAfter!.Delta > TimeSpan.FromHours(23));
+    }
+
+    private static HttpRequestMessage Sms(string idempotencyKey, string body) =>
+        new(HttpMethod.Post, "/messages/sms")
+        {
+            Content = JsonContent.Create(new SendSmsRequest("+821012345678", body)),
+            Headers = { { "Idempotency-Key", idempotencyKey } }
+        };
+
+    [Fact]
+    public async Task Post_WhenTheProviderCannotTakeTheMessage_Returns400WithoutStoringIt()
+    {
+        _fakeSmsSender.RefuseWith("The body is too long for one message.");
+        var client = CreateAuthenticatedClient();
+
+        var response = await client.PostAsJsonAsync("/messages/sms", new SendSmsRequest("+821012345678", "Body"));
         await TestDelivery.DeliverPendingAsync(_factory);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
         Assert.Equal("invalid_request", problem!["code"].ToString());
-        Assert.Equal("SMS to +1 numbers is not available.", problem["detail"].ToString());
+        Assert.Equal("The body is too long for one message.", problem["detail"].ToString());
         Assert.Null(_fakeSmsSender.LastMessage);
     }
 

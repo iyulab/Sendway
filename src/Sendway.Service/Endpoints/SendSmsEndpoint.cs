@@ -1,4 +1,5 @@
 using Sendway.Core;
+using Microsoft.Extensions.Options;
 using Sendway.Service.Auth;
 
 namespace Sendway.Service.Endpoints;
@@ -22,6 +23,15 @@ public static class SendSmsEndpoint
             catch (InvalidRecipientException ex)
             {
                 return ApiProblem.BadRequest(ex.Message, ApiProblem.InvalidRecipient);
+            }
+
+            var tenant = httpContext.GetTenant();
+            var allowed = TenantLimits.SmsCountries(tenant, httpContext.RequestServices.GetRequiredService<IOptions<TenantLimitOptions>>().Value);
+            if (!allowed.Contains(message.To.CountryCode))
+            {
+                return ApiProblem.BadRequest(
+                    $"This service may not send SMS to +{message.To.CountryCode} numbers. Ask an administrator to allow the country.",
+                    ApiProblem.DestinationNotAllowed);
             }
 
             // A destination the provider does not serve, or a body it cannot carry, is known now —

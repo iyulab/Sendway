@@ -50,6 +50,15 @@
 
 시험 테넌트의 메시지는 운영 지표(`/health`의 채널 검사, `/admin/queues`의 실패 수)에 들어가지 않습니다. `GET /admin/usage`와 `GET /admin/tenants`는 `sandbox`로 구분합니다.
 
+### 발송 한도
+
+호출 서비스의 버그나 오용이 프로바이더 요금으로 번지지 않게 테넌트마다 두 가지 한도가 있습니다.
+
+- **SMS 허용 국가**: 기본은 한국(`82`)만입니다. 그 밖의 번호는 접수 단계에서 `400`·`destination_not_allowed`. 해외 발송은 결정이 필요한 일이라 기본으로 열지 않습니다.
+- **채널별 하루 건수**: 직전 24시간 동안 접수된 메시지 수입니다. 기본은 SMS 1,000건, 이메일·푸시는 제한 없음. 넘으면 저장하지 않고 `429`·`daily_limit_reached`, `Retry-After`는 가장 오래된 메시지가 창을 벗어나는 때까지입니다. 같은 `Idempotency-Key`의 재요청은 새 메시지가 아니므로 한도와 무관하게 원래 응답을 받습니다.
+
+기본값은 `Sendway:Limits:*`(`SmsCountries`, `SmsPerDay`, `EmailPerDay`, `PushPerDay`), 테넌트별 값은 `PUT /admin/tenants/{id}/limits`(`{"smsCountries": ["82", "81"], "smsPerDay": 5000}` — 빠진 값은 기본값)로 정하고 `GET /admin/tenants`가 적용 중인 값을 보여 줍니다. 분당 요청 수 한도(위)와는 따로 셉니다.
+
 ### 오류 응답
 
 오류 응답은 모두 같은 형식([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, `application/problem+json`)입니다. 엔드포인트가 요청을 거절한 경우뿐 아니라, 본문을 읽지 못했거나 경로가 없거나 처리 중 예기치 않게 실패한 경우도 같습니다.
@@ -70,6 +79,8 @@
 | `managed_by_configuration` | 409 | 관리 API로 바꾸려는 공용 설정을 설정 파일·환경변수가 공급하고 있음. 설정에서 바꾸고 재시작하거나, 설정에서 빼고 API로 관리 |
 | `idempotency_key_reused` | 422 | 같은 `Idempotency-Key`가 다른 내용의 요청에 이미 쓰임 |
 | `rate_limited` | 429 | 테넌트의 요청 한도 초과. `Retry-After` 헤더만큼 기다린 뒤 재시도 |
+| `destination_not_allowed` | 400 | 이 테넌트가 그 나라로 SMS를 보낼 수 없음(«발송 한도»). 관리자가 허용해야 함 |
+| `daily_limit_reached` | 429 | 이 채널의 하루 한도에 닿음, 저장하지 않음. `Retry-After` 뒤에 재시도하거나 관리자가 한도를 올림 |
 | `internal_error` | 500 | 서비스 쪽 실패. 요청이 접수됐는지 알 수 없으므로 같은 `Idempotency-Key`로 다시 보내면 안전 |
 
 `code`가 없는 오류 응답은 Sendway가 아니라 그 앞의 프록시나 게이트웨이가 낸 것입니다(요청이 `Accept` 헤더로 JSON을 받지 않겠다고 한 경우는 예외로, 이때는 상태 코드만 의미가 있습니다).

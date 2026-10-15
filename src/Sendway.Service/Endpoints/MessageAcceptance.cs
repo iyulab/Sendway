@@ -1,4 +1,5 @@
 using Sendway.Core;
+using Microsoft.Extensions.Options;
 using Sendway.Service.Auth;
 
 namespace Sendway.Service.Endpoints;
@@ -43,7 +44,18 @@ public static class MessageAcceptance
 
         // No cancellation token: a caller that disconnects mid-request must not leave it undecided
         // whether the message was accepted.
-        var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt, tenant.Sandbox));
+        var limits = httpContext.RequestServices.GetRequiredService<IOptions<TenantLimitOptions>>().Value;
+        var result = await outbox.EnqueueAsync(new MessageSubmission(
+            tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt, tenant.Sandbox, TenantLimits.PerDay(tenant, channel, limits)));
+
+        if (result.Outcome == EnqueueOutcome.DailyLimitReached)
+        {
+            httpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return ApiProblem.Create(
+                StatusCodes.Status429TooManyRequests,
+                ApiProblem.DailyLimitReached,
+                $"This service already sent as many '{channel}' messages in the last 24 hours as it may. Nothing was stored; try again after Retry-After, or ask an administrator to raise the limit.");
+        }
 
         if (result.Outcome == EnqueueOutcome.ChannelNotConfigured)
         {

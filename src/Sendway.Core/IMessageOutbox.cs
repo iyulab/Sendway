@@ -30,7 +30,8 @@ public sealed record MessageSubmission(
     string Payload,
     string? IdempotencyKey = null,
     DateTimeOffset? ExpiresAt = null,
-    bool Simulated = false);
+    bool Simulated = false,
+    int? PerDay = null);
 
 public enum EnqueueOutcome
 {
@@ -44,10 +45,14 @@ public enum EnqueueOutcome
 
     // No stored credential lets this tenant send on the channel — neither its own nor a shared one.
     // Nothing was stored; Record is null.
-    ChannelNotConfigured
+    ChannelNotConfigured,
+
+    // The tenant already had PerDay messages accepted on the channel in the last 24 hours. Nothing was
+    // stored; RetryAfter is when the oldest of them leaves the window.
+    DailyLimitReached
 }
 
-public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord? Record);
+public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord? Record, TimeSpan? RetryAfter = null);
 
 // A channel that is not getting messages through. Unsendable: unfinished messages whose tenant no
 // stored credential serves on the channel (one deleted after they were accepted). FailingFor: how long

@@ -60,6 +60,24 @@ public sealed class TenantStore : ITenantStore
         return tenants.OrderBy(t => t.CreatedAt).ToList();
     }
 
+    public async Task<bool> SetLimitsAsync(Guid id, string? smsCountries, int? smsPerDay, int? emailPerDay, int? pushPerDay, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+        if (tenant is null)
+        {
+            return false;
+        }
+
+        tenant.SmsCountries = smsCountries;
+        tenant.SmsPerDay = smsPerDay;
+        tenant.EmailPerDay = emailPerDay;
+        tenant.PushPerDay = pushPerDay;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> SetActiveAsync(Guid id, bool active, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);

@@ -35,6 +35,8 @@ public static class SendwayOpenApi
         ApiProblem.IdempotencyKeyReused,
         ApiProblem.ChannelNotConfigured,
         ApiProblem.RateLimited,
+        ApiProblem.DestinationNotAllowed,
+        ApiProblem.DailyLimitReached,
         ApiProblem.Unauthorized,
         ApiProblem.NotFound,
         ApiProblem.InternalError

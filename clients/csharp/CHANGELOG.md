@@ -8,5 +8,6 @@
   `Expired`, `AttemptsExhausted`); unknown values read as `Unknown` with the text kept.
 - `Message.RefusedRecipients`: email recipients the mail server refused for good while the others received the
   message.
-- `SendwayException`: a refused call's HTTP status, problem `code` and `Retry-After`.
+- `SendwayException`: a refused call's HTTP status, problem `code` (including `DestinationNotAllowed` and
+  `DailyLimitReached`) and `Retry-After`.
 - `SendwayWebhook`: verifies an outcome webhook's Standard Webhooks signature and timestamp, and reads the event.

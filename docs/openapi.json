@@ -467,6 +467,8 @@
               "idempotency_key_reused",
               "channel_not_configured",
               "rate_limited",
+              "destination_not_allowed",
+              "daily_limit_reached",
               "unauthorized",
               "not_found",
               "internal_error"

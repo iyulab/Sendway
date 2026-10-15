@@ -61,6 +61,13 @@ public enum SendwayErrorCode
     /// <summary>429 — over the service's request limit. Retry after <see cref="SendwayException.RetryAfter"/>.</summary>
     RateLimited,
 
+    /// <summary>400 — this service may not send SMS to that country. An administrator can allow it.</summary>
+    DestinationNotAllowed,
+
+    /// <summary>429 — this service already sent as many messages on the channel in the last 24 hours as it may. Nothing
+    /// was stored; retry after <see cref="SendwayException.RetryAfter"/>.</summary>
+    DailyLimitReached,
+
     /// <summary>401 — the API key is missing or not valid.</summary>
     Unauthorized,
 

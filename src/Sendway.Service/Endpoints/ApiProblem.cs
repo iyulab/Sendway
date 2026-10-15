@@ -27,6 +27,13 @@ public static class ApiProblem
     // The tenant's request rate limit was exceeded; see the Retry-After header.
     public const string RateLimited = "rate_limited";
 
+    // The tenant may not send SMS to that country (its allowed countries).
+    public const string DestinationNotAllowed = "destination_not_allowed";
+
+    // The tenant already sent as many messages on the channel in the last 24 hours as it may; see the
+    // Retry-After header.
+    public const string DailyLimitReached = "daily_limit_reached";
+
     // The API key is missing, unknown or belongs to a deactivated tenant.
     public const string Unauthorized = "unauthorized";
 

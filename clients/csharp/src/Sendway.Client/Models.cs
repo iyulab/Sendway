@@ -143,6 +143,8 @@ internal static class Names
         "idempotency_key_reused" => SendwayErrorCode.IdempotencyKeyReused,
         "channel_not_configured" => SendwayErrorCode.ChannelNotConfigured,
         "rate_limited" => SendwayErrorCode.RateLimited,
+        "destination_not_allowed" => SendwayErrorCode.DestinationNotAllowed,
+        "daily_limit_reached" => SendwayErrorCode.DailyLimitReached,
         "unauthorized" => SendwayErrorCode.Unauthorized,
         "not_found" => SendwayErrorCode.NotFound,
         "internal_error" => SendwayErrorCode.InternalError,
