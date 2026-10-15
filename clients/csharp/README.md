@@ -54,6 +54,13 @@ if (message.Status == MessageState.Failed)
 Branch on `Reason`, not on the human-readable `Error`. A value this version does not know reads as `Unknown`, with the
 text kept in `ReasonText` / `StatusText`.
 
+## Testing without sending
+
+A sandbox tenant (its key starts with `sw_test_`) goes through the whole path — acceptance, status, signed
+webhooks — but nothing leaves Sendway, and the destination picks the outcome: an address local part or device token
+starting with `refused`, `rejected`, `ratelimited` or `exhausted` (SMS: a number ending in `0001`–`0004`) gets the
+matching `FailureReason`; anything else is `Sent`. Point a development environment at one.
+
 ## Errors
 
 A refused call throws `SendwayException` with the HTTP `Status`, a `Code` to branch on (`InvalidRequest`,

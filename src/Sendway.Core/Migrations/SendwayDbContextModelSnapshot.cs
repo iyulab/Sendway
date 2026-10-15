@@ -124,6 +124,9 @@ namespace Sendway.Core.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<bool>("Simulated")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -168,6 +171,9 @@ namespace Sendway.Core.Migrations
 
                     b.Property<string>("PreviousApiKeyHash")
                         .HasColumnType("text");
+
+                    b.Property<bool>("Sandbox")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

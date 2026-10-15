@@ -11,7 +11,7 @@ public sealed class TenantStore : ITenantStore
         _dbContextFactory = dbContextFactory;
     }
 
-    public async Task<Tenant> CreateAsync(string name, string apiKeyHash, CancellationToken cancellationToken = default)
+    public async Task<Tenant> CreateAsync(string name, string apiKeyHash, bool sandbox = false, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -21,6 +21,7 @@ public sealed class TenantStore : ITenantStore
             Name = name,
             ApiKeyHash = apiKeyHash,
             Active = true,
+            Sandbox = sandbox,
             CreatedAt = DateTimeOffset.UtcNow
         };
 

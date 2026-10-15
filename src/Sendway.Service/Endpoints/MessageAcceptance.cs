@@ -43,7 +43,7 @@ public static class MessageAcceptance
 
         // No cancellation token: a caller that disconnects mid-request must not leave it undecided
         // whether the message was accepted.
-        var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt));
+        var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt, tenant.Sandbox));
 
         if (result.Outcome == EnqueueOutcome.ChannelNotConfigured)
         {

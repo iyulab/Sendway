@@ -20,6 +20,10 @@ public sealed class MessageRecord : QueuedDelivery
     // The caller's deadline: past it the message is not sent (MessageFailureReasons.Expired).
     public DateTimeOffset? ExpiresAt { get; init; }
 
+    // Accepted for a sandbox tenant: delivered by DeliverySimulator, and left out of the operator's
+    // health and failure counts.
+    public bool Simulated { get; init; }
+
     // Why the message ended Failed (MessageFailureReasons); null otherwise, and for messages that
     // failed before the reason was recorded.
     public string? FailureReason { get; set; }

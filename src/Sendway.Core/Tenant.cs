@@ -17,6 +17,10 @@ public sealed class Tenant
 
     public required bool Active { get; set; }
 
+    // A sandbox tenant's messages never leave the instance: DeliverySimulator answers in place of the
+    // providers. For a calling service's development and test environments. Set at creation only.
+    public bool Sandbox { get; init; }
+
     public required DateTimeOffset CreatedAt { get; init; }
 
     // When the previous key stops working, or null when it no longer works at `now`.

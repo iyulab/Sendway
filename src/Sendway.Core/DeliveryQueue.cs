@@ -98,12 +98,18 @@ internal sealed class DeliveryQueue<TEntity> where TEntity : QueuedDelivery
             cancellationToken);
     }
 
-    public async Task<QueueStats> GetStatsAsync(SendwayDbContext db, CancellationToken cancellationToken)
+    // `scope` leaves items out of the counts (a queue's simulated items, for one).
+    public async Task<QueueStats> GetStatsAsync(
+        SendwayDbContext db, CancellationToken cancellationToken, System.Linq.Expressions.Expression<Func<TEntity, bool>>? scope = null)
     {
         var now = _timeProvider.GetUtcNow();
         DateTimeOffset? dueBy = now;
         DateTimeOffset? since = now - TimeSpan.FromHours(24);
         var items = db.Set<TEntity>().AsNoTracking();
+        if (scope is not null)
+        {
+            items = items.Where(scope);
+        }
 
         var queued = await items.CountAsync(m => m.Status == DeliveryStatus.Queued, cancellationToken);
         var sending = await items.CountAsync(m => m.Status == DeliveryStatus.Sending, cancellationToken);

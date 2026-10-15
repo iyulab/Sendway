@@ -11,7 +11,7 @@ public static class ListTenantsEndpoint
             var tenants = await tenantStore.ListAsync(cancellationToken);
             var now = timeProvider.GetUtcNow();
 
-            return Results.Ok(tenants.Select(t => new TenantResponse(t.Id, t.Name, t.Active, t.CreatedAt, t.PreviousApiKeyExpiryAt(now))));
+            return Results.Ok(tenants.Select(t => new TenantResponse(t.Id, t.Name, t.Active, t.Sandbox, t.CreatedAt, t.PreviousApiKeyExpiryAt(now))));
         });
     }
 }

@@ -48,7 +48,7 @@ public sealed class MessageOutbox : IMessageOutbox
 
         // Checked after the replay lookup, so a retry of an accepted request is answered the same way
         // even if the credential has gone since.
-        if (!await CanSendAsync(db, submission.TenantId, submission.Channel, cancellationToken))
+        if (!submission.Simulated && !await CanSendAsync(db, submission.TenantId, submission.Channel, cancellationToken))
         {
             return new EnqueueResult(EnqueueOutcome.ChannelNotConfigured, null);
         }
@@ -65,7 +65,8 @@ public sealed class MessageOutbox : IMessageOutbox
             Payload = _protector.Protect(submission.Payload),
             IdempotencyKey = submission.IdempotencyKey,
             RequestHash = requestHash,
-            ExpiresAt = submission.ExpiresAt
+            ExpiresAt = submission.ExpiresAt,
+            Simulated = submission.Simulated
         };
 
         db.MessageRecords.Add(record);
@@ -109,7 +110,7 @@ public sealed class MessageOutbox : IMessageOutbox
 
         return record is null
             ? null
-            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, record.Payload!, record.AttemptCount, record.ExpiresAt);
+            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, record.Payload!, record.AttemptCount, record.ExpiresAt, record.Simulated);
     }
 
     public string ReadPayload(ClaimedMessage message)
@@ -164,7 +165,8 @@ public sealed class MessageOutbox : IMessageOutbox
     public async Task<QueueStats> GetStatsAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        return await _queue.GetStatsAsync(db, cancellationToken);
+        // Sandbox traffic says nothing about whether delivery works.
+        return await _queue.GetStatsAsync(db, cancellationToken, m => !m.Simulated);
     }
 
     public async Task<IReadOnlyList<ChannelDeliveryState>> GetChannelStatesAsync(CancellationToken cancellationToken = default)
@@ -174,7 +176,7 @@ public sealed class MessageOutbox : IMessageOutbox
 
         var unfinished = await db.MessageRecords
             .AsNoTracking()
-            .Where(m => m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending)
+            .Where(m => !m.Simulated && (m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending))
             .GroupBy(m => new { m.TenantId, m.Channel })
             .Select(g => new { g.Key.TenantId, g.Key.Channel, Count = g.Count() })
             .ToListAsync(cancellationToken);
@@ -191,8 +193,9 @@ public sealed class MessageOutbox : IMessageOutbox
         // A message that has failed and waits to be tried again, or is being tried again now.
         var retrying = await db.MessageRecords
             .AsNoTracking()
-            .Where(m => (m.Status == DeliveryStatus.Queued && m.AttemptCount >= 1) ||
-                        (m.Status == DeliveryStatus.Sending && m.AttemptCount >= 2))
+            .Where(m => !m.Simulated &&
+                        ((m.Status == DeliveryStatus.Queued && m.AttemptCount >= 1) ||
+                         (m.Status == DeliveryStatus.Sending && m.AttemptCount >= 2)))
             .Select(m => new { m.Channel, m.AcceptedAt })
             .ToListAsync(cancellationToken);
 
@@ -200,7 +203,7 @@ public sealed class MessageOutbox : IMessageOutbox
         foreach (var channel in retrying.Select(m => m.Channel).Distinct())
         {
             var lastSent = await db.MessageRecords
-                .Where(m => m.Status == DeliveryStatus.Sent && m.Channel == channel)
+                .Where(m => !m.Simulated && m.Status == DeliveryStatus.Sent && m.Channel == channel)
                 .MaxAsync(m => m.CompletedAt, cancellationToken);
 
             // Messages accepted after the last success that went out are what tells whether the channel

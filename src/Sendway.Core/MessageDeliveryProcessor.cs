@@ -46,6 +46,12 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 
         var payload = _outbox.ReadPayload(message);
 
+        if (message.Simulated)
+        {
+            await SimulateAsync(message, payload);
+            return;
+        }
+
         switch (message.Channel)
         {
             case MessageChannels.Email:
@@ -65,6 +71,29 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
                 break;
             default:
                 throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.");
+        }
+    }
+
+    // A sandbox tenant's message: the simulator answers instead of the provider, the outcome is
+    // recorded the same way.
+    private async Task SimulateAsync(ClaimedMessage message, string payload)
+    {
+        switch (message.Channel)
+        {
+            case MessageChannels.Email:
+                var delivery = DeliverySimulator.Send(MessagePayload.ToEmailMessage(message.TenantId, payload));
+                if (delivery.RefusedRecipients.Count > 0)
+                {
+                    await _outbox.RecordRefusedRecipientsAsync(message, delivery.RefusedRecipients, CancellationToken.None);
+                }
+
+                break;
+            case MessageChannels.Push:
+                DeliverySimulator.Send(MessagePayload.ToPushMessage(message.TenantId, payload));
+                break;
+            case MessageChannels.Sms:
+                DeliverySimulator.Send(MessagePayload.ToSmsMessage(message.TenantId, payload));
+                break;
         }
     }
 

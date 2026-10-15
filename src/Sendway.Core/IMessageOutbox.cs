@@ -29,7 +29,8 @@ public sealed record MessageSubmission(
     string Recipient,
     string Payload,
     string? IdempotencyKey = null,
-    DateTimeOffset? ExpiresAt = null);
+    DateTimeOffset? ExpiresAt = null,
+    bool Simulated = false);
 
 public enum EnqueueOutcome
 {
@@ -56,5 +57,6 @@ public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord? Record
 public sealed record ChannelDeliveryState(string Channel, int Unsendable, TimeSpan? FailingFor);
 
 // The content stays encrypted until the attempt reads it (IMessageOutbox.ReadPayload).
-public sealed record ClaimedMessage(Guid Id, Guid TenantId, string Channel, string ProtectedPayload, int AttemptCount, DateTimeOffset? ExpiresAt = null)
+public sealed record ClaimedMessage(
+    Guid Id, Guid TenantId, string Channel, string ProtectedPayload, int AttemptCount, DateTimeOffset? ExpiresAt = null, bool Simulated = false)
     : ClaimedDelivery(Id, TenantId, AttemptCount);

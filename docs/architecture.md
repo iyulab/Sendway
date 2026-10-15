@@ -36,6 +36,20 @@
 
 접수 단계에서 알 수 있는 오류는 `400`으로 거절하며, 이때는 아무것도 저장되지 않고 메시지 ID도 없습니다 — 필수 필드 누락, 크기 상한 초과, 형식이 잘못된 이메일 주소가 여기에 해당합니다. 그 채널로 보낼 자격증명이 테넌트에도 공용으로도 없으면 `409 channel_not_configured`로 거절합니다 — 보낼 수 없는 메시지는 접수하지 않습니다. 프로바이더만 알 수 있는 오류(등록이 해제된 디바이스 토큰, 존재하지 않는 사서함 등)는 접수된 뒤 그 메시지의 발송 실패로 나타납니다.
 
+### 시험 테넌트(샌드박스)
+
+`POST /admin/tenants`에 `"sandbox": true`를 주면 시험 테넌트가 만들어집니다 — 키가 `sw_test_`로 시작해 운영 설정에 섞여도 눈에 띄고, 만들 때만 정합니다. 시험 테넌트의 메시지는 접수·대기열·기한·상태 조회·웹훅(실제로 서명해 보냄)까지 실제 경로를 그대로 지나지만, 프로바이더 대신 시뮬레이터가 답하므로 **아무것도 밖으로 나가지 않고** 채널 자격증명도 필요 없습니다. 결과는 목적지가 고릅니다.
+
+| 목적지 | 결과 |
+|---|---|
+| 이메일 주소의 로컬 파트·디바이스 토큰이 `refused`로 시작 / SMS 번호가 `0001`로 끝남 | 목적지 거부 — 이메일은 그 수신자만 `refusedRecipients`에 남고 나머지에게는 `Sent`, 모두 그렇다면 `Failed`·`recipient_refused` |
+| `rejected` / `0002` | `Failed`·`message_refused` |
+| `ratelimited` / `0003` | `Failed`·`recipient_rate_limited` |
+| `exhausted` / `0004` | `Failed`·`attempts_exhausted`(실제 재시도 일정 없이 바로) |
+| 그 밖 | `Sent` |
+
+시험 테넌트의 메시지는 운영 지표(`/health`의 채널 검사, `/admin/queues`의 실패 수)에 들어가지 않습니다. `GET /admin/usage`와 `GET /admin/tenants`는 `sandbox`로 구분합니다.
+
 ### 오류 응답
 
 오류 응답은 모두 같은 형식([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, `application/problem+json`)입니다. 엔드포인트가 요청을 거절한 경우뿐 아니라, 본문을 읽지 못했거나 경로가 없거나 처리 중 예기치 않게 실패한 경우도 같습니다.

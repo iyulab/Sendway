@@ -2,7 +2,7 @@ namespace Sendway.Core;
 
 public interface ITenantStore
 {
-    Task<Tenant> CreateAsync(string name, string apiKeyHash, CancellationToken cancellationToken = default);
+    Task<Tenant> CreateAsync(string name, string apiKeyHash, bool sandbox = false, CancellationToken cancellationToken = default);
 
     Task<Tenant?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

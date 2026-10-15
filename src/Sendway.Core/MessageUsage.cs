@@ -15,6 +15,7 @@ public sealed record TenantUsage(
     Guid TenantId,
     string Name,
     bool Active,
+    bool Sandbox,
     DateTimeOffset? LastSentAt,
     IReadOnlyDictionary<string, ChannelUsage> Channels);
 
@@ -29,7 +30,7 @@ public sealed class MessageUsage(IDbContextFactory<SendwayDbContext> dbContextFa
         var tenants = await db.Tenants
             .AsNoTracking()
             .OrderBy(t => t.CreatedAt)
-            .Select(t => new { t.Id, t.Name, t.Active })
+            .Select(t => new { t.Id, t.Name, t.Active, t.Sandbox })
             .ToListAsync(cancellationToken);
 
         var finished = await db.MessageRecords
@@ -51,6 +52,7 @@ public sealed class MessageUsage(IDbContextFactory<SendwayDbContext> dbContextFa
                 t.Id,
                 t.Name,
                 t.Active,
+                t.Sandbox,
                 lastSent.GetValueOrDefault(t.Id),
                 finished
                     .Where(f => f.TenantId == t.Id)

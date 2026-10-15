@@ -28,7 +28,12 @@ public static class RotateTenantKeyEndpoint
 
             DateTimeOffset? previousKeyExpiresAt = overlap == 0 ? null : timeProvider.GetUtcNow().AddSeconds(overlap);
 
-            var (plaintextKey, hash) = ApiKeyGenerator.Generate();
+            if (await tenantStore.GetByIdAsync(id, cancellationToken) is not { } tenant)
+            {
+                return Results.NotFound();
+            }
+
+            var (plaintextKey, hash) = ApiKeyGenerator.Generate(tenant.Sandbox);
             if (!await tenantStore.RotateApiKeyAsync(id, hash, previousKeyExpiresAt, cancellationToken))
             {
                 return Results.NotFound();
