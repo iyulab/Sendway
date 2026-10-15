@@ -28,11 +28,14 @@ public sealed class SolapiSmsSender : ISmsSender
     private static readonly HashSet<string> UnservedCountryCodes = ["1", "65", "86"];
 
     // Codes meaning SOLAPI refused this message for what it is — its content, or a recipient who
-    // opted out — so another attempt would be refused the same way. Any other refusal (balance,
-    // sender number, credentials, a server error) can clear up, and the message is attempted again.
+    // opted out — so another attempt would be refused the same way. 1069 belongs here too: the
+    // recipient already got as many messages as the account's repeat-send limit allows in its window,
+    // and a later attempt would get through only by arriving late, which is what that limit is there
+    // to stop. Any other refusal (balance, sender number, credentials, a server error) can clear up,
+    // and the message is attempted again.
     private static readonly HashSet<string> MessageRejections =
     [
-        "1010", "1011", "1028", "1029", "1031", "1061", "1065",
+        "1010", "1011", "1028", "1029", "1031", "1061", "1065", "1069",
         "2011", "2061", "2065", "2254"
     ];
 

@@ -73,6 +73,7 @@ public class SolapiSmsSenderTests
     [Theory]
     [InlineData("1061")]
     [InlineData("1029")]
+    [InlineData("1069")]
     [InlineData("2254")]
     public async Task Send_WhenTheMessageItselfIsRefused_RejectsIt(string statusCode)
     {
