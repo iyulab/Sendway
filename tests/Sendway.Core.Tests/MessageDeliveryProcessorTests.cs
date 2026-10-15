@@ -219,6 +219,21 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ProcessNext_WhenSomeRecipientsWereRefused_IsSentAndNamesThem()
+    {
+        _emailSender.Result = new EmailDelivery([new RefusedRecipient("typo@example.com", "550 5.1.1 no such user")]);
+        var id = await EnqueueEmailAsync();
+
+        await _processor.ProcessNextAsync();
+
+        var stored = await StoredAsync(id);
+        Assert.Equal(DeliveryStatus.Sent, stored.Status);
+        Assert.Null(stored.FailureReason);
+        var refused = Assert.Single(RefusedRecipient.Parse(stored.RefusedRecipients)!);
+        Assert.Equal("typo@example.com", refused.Address);
+    }
+
+    [Fact]
     public async Task ProcessNext_WhenTheDestinationIsRejected_FailsWithoutRetrying()
     {
         _emailSender.FailWith(new InvalidRecipientException("the mailbox does not exist"));
@@ -404,13 +419,15 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
 
         public Task Started => _started.Task;
 
+        public EmailDelivery Result { get; set; } = EmailDelivery.ToEveryone;
+
         public void FailWith(Exception failure) => _failure = failure;
 
         public void Succeed() => _failure = null;
 
         public void HangUntilCancelled() => _hang = true;
 
-        public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public async Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             CallCount++;
             _started.TrySetResult();
@@ -426,6 +443,8 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
             }
 
             Sent.Add(message);
+
+            return Result;
         }
     }
 

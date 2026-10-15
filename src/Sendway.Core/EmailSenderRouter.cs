@@ -25,12 +25,12 @@ public sealed class EmailSenderRouter : IEmailSender
         _graphSender = graphSender;
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public async Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         var graphOptions = await _credentialStore.GetAsync<GraphOptions>(
             message.TenantId, ChannelCredentialNames.EmailGraph, cancellationToken);
 
         IEmailSender sender = graphOptions is not null ? _graphSender : _smtpSender;
-        await sender.SendAsync(message, cancellationToken);
+        return await sender.SendAsync(message, cancellationToken);
     }
 }

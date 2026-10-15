@@ -23,7 +23,7 @@ public sealed class GraphEmailSender : IEmailSender
         _credentialStore = credentialStore;
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public async Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         var lazyClient = _clients.GetOrAdd(
             message.TenantId,
@@ -56,6 +56,9 @@ public sealed class GraphEmailSender : IEmailSender
         {
             throw final;
         }
+
+        // Graph takes or refuses the request as a whole: it never names recipients it left out.
+        return EmailDelivery.ToEveryone;
     }
 
     // sendMail answers 202 once Exchange has taken the message; a recipient that turns out not to

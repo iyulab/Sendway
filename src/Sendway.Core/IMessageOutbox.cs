@@ -16,6 +16,10 @@ public interface IMessageOutbox : IDeliveryQueue<ClaimedMessage>
     // The claimed message's content, decrypted. Throws when it cannot be — part of the attempt, so
     // the failure is retried and counted like any other rather than stopping the claim.
     string ReadPayload(ClaimedMessage message);
+
+    // Records, for the attempt that holds the message, the recipients refused while the others were
+    // accepted — before the attempt is marked Sent, so the outcome event carries them.
+    Task RecordRefusedRecipientsAsync(ClaimedMessage claim, IReadOnlyList<RefusedRecipient> refused, CancellationToken cancellationToken = default);
 }
 
 // ExpiresAt: the caller's deadline, after which the message is worthless and is not sent (null: none).

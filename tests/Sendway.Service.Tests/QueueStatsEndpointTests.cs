@@ -84,6 +84,6 @@ public class QueueStatsEndpointTests : IClassFixture<WebApplicationFactory<Progr
 
     private sealed class NoopEmailSender : IEmailSender
     {
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.FromResult(EmailDelivery.ToEveryone);
     }
 }

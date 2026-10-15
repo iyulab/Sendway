@@ -23,4 +23,8 @@ public sealed class MessageRecord : QueuedDelivery
     // Why the message ended Failed (MessageFailureReasons); null otherwise, and for messages that
     // failed before the reason was recorded.
     public string? FailureReason { get; set; }
+
+    // The recipients of an email the mail server refused for good while accepting the others (JSON,
+    // RefusedRecipient); null when there were none.
+    public string? RefusedRecipients { get; set; }
 }

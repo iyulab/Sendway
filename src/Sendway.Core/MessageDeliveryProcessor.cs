@@ -36,7 +36,7 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 
     protected override DeliveryOptions Options => _options.Value;
 
-    protected override Task SendAsync(ClaimedMessage message, CancellationToken cancellationToken)
+    protected override async Task SendAsync(ClaimedMessage message, CancellationToken cancellationToken)
     {
         if (message.ExpiresAt is { } expiresAt && expiresAt <= _timeProvider.GetUtcNow())
         {
@@ -46,13 +46,26 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 
         var payload = _outbox.ReadPayload(message);
 
-        return message.Channel switch
+        switch (message.Channel)
         {
-            MessageChannels.Email => _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, payload), cancellationToken),
-            MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, payload, message.ExpiresAt), cancellationToken),
-            MessageChannels.Sms => _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, payload), cancellationToken),
-            _ => throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.")
-        };
+            case MessageChannels.Email:
+                var delivery = await _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, payload), cancellationToken);
+                if (delivery.RefusedRecipients.Count > 0)
+                {
+                    // Not cancellable: the message has gone out, what it left out must be recorded.
+                    await _outbox.RecordRefusedRecipientsAsync(message, delivery.RefusedRecipients, CancellationToken.None);
+                }
+
+                break;
+            case MessageChannels.Push:
+                await _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, payload, message.ExpiresAt), cancellationToken);
+                break;
+            case MessageChannels.Sms:
+                await _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, payload), cancellationToken);
+                break;
+            default:
+                throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.");
+        }
     }
 
     protected override bool IsRejection(Exception exception) => exception is InvalidRecipientException or MessageRejectedException;

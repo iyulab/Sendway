@@ -329,6 +329,24 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
+    public async Task Post_WhenTheServerRefusesSomeRecipients_IsSentAndTheStatusNamesThem()
+    {
+        _fakeEmailSender.Result = new EmailDelivery([new RefusedRecipient("typo@example.com", "550 5.1.1 no such user")]);
+        var client = CreateAuthenticatedClient();
+
+        var response = await client.PostAsJsonAsync("/messages/email",
+            new SendEmailRequest(["user@example.com", "typo@example.com"], "Subject", "Body"));
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+        await TestDelivery.DeliverPendingAsync(_factory);
+
+        var status = (await client.GetFromJsonAsync<MessageStatusResponse>($"/messages/{body!.Id}"))!;
+        Assert.Equal("Sent", status.Status);
+        var refused = Assert.Single(status.RefusedRecipients!);
+        Assert.Equal("typo@example.com", refused.Address);
+        Assert.Equal("550 5.1.1 no such user", refused.Error);
+    }
+
+    [Fact]
     public async Task Post_WhenAnAttemptFailsTransiently_StaysQueuedWithTheErrorVisible()
     {
         _fakeEmailSender.FailWith(new InvalidOperationException("simulated SMTP failure"));
@@ -384,9 +402,11 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
 
         public EmailMessage? LastMessage { get; private set; }
 
+        public EmailDelivery Result { get; set; } = EmailDelivery.ToEveryone;
+
         public void FailWith(Exception failure) => _failure = failure;
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             if (_failure is not null)
             {
@@ -394,7 +414,7 @@ public class SendEmailEndpointTests : IClassFixture<WebApplicationFactory<Progra
             }
 
             LastMessage = message;
-            return Task.CompletedTask;
+            return Task.FromResult(Result);
         }
     }
 }

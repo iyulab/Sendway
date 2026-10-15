@@ -1,5 +1,3 @@
-using MailKit.Net.Smtp;
-
 namespace Sendway.Core;
 
 // Connections that have just delivered a message, kept open for the next message to the same account
@@ -13,7 +11,7 @@ internal sealed class SmtpConnectionPool : IDisposable
 
     private readonly TimeProvider _timeProvider;
     private readonly Lock _gate = new();
-    private readonly Dictionary<string, List<(SmtpClient Client, DateTimeOffset IdleSince)>> _idle = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<(TrackingSmtpClient Client, DateTimeOffset IdleSince)>> _idle = new(StringComparer.Ordinal);
     private bool _disposed;
 
     public SmtpConnectionPool(TimeProvider timeProvider)
@@ -23,10 +21,10 @@ internal sealed class SmtpConnectionPool : IDisposable
 
     // The most recently kept open connection to this account, or null. Connections idle for too long
     // — to any account — are closed on the way.
-    public SmtpClient? TryTake(string account)
+    public TrackingSmtpClient? TryTake(string account)
     {
-        List<SmtpClient> expired;
-        SmtpClient? taken = null;
+        List<TrackingSmtpClient> expired;
+        TrackingSmtpClient? taken = null;
 
         lock (_gate)
         {
@@ -59,7 +57,7 @@ internal sealed class SmtpConnectionPool : IDisposable
         return taken;
     }
 
-    public void Return(string account, SmtpClient client)
+    public void Return(string account, TrackingSmtpClient client)
     {
         lock (_gate)
         {
@@ -80,7 +78,7 @@ internal sealed class SmtpConnectionPool : IDisposable
 
     public void Dispose()
     {
-        List<SmtpClient> all;
+        List<TrackingSmtpClient> all;
         lock (_gate)
         {
             _disposed = true;
@@ -94,9 +92,9 @@ internal sealed class SmtpConnectionPool : IDisposable
         }
     }
 
-    private List<SmtpClient> RemoveExpired(DateTimeOffset now)
+    private List<TrackingSmtpClient> RemoveExpired(DateTimeOffset now)
     {
-        var expired = new List<SmtpClient>();
+        var expired = new List<TrackingSmtpClient>();
         foreach (var (account, connections) in _idle.ToList())
         {
             expired.AddRange(connections.Where(c => now - c.IdleSince >= IdleTimeout).Select(c => c.Client));

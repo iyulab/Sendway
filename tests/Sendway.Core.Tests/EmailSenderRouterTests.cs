@@ -47,10 +47,10 @@ public class EmailSenderRouterTests
     {
         public EmailMessage? LastMessage { get; private set; }
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             LastMessage = message;
-            return Task.CompletedTask;
+            return Task.FromResult(EmailDelivery.ToEveryone);
         }
     }
 }

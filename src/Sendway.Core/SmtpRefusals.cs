@@ -30,12 +30,14 @@ internal static partial class SmtpRefusals
         };
     }
 
-    private static bool IsPermanent(SmtpCommandException exception)
+    private static bool IsPermanent(SmtpCommandException exception) => IsPermanent(exception.StatusCode, exception.Message);
+
+    public static bool IsPermanent(SmtpStatusCode statusCode, string reply)
     {
-        var enhanced = EnhancedStatusCode().Match(exception.Message);
+        var enhanced = EnhancedStatusCode().Match(reply);
         return enhanced.Success
             ? enhanced.Groups[1].Value == "5"
-            : (int)exception.StatusCode is >= 500 and < 600;
+            : (int)statusCode is >= 500 and < 600;
     }
 
     [GeneratedRegex(@"^\s*([245])\.\d{1,3}\.\d{1,3}\b")]

@@ -91,10 +91,10 @@ public class MessageDeliveryWorkerTests : IClassFixture<WebApplicationFactory<Pr
 
         public Task Delivered => _delivered.Task;
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             _delivered.TrySetResult();
-            return Task.CompletedTask;
+            return Task.FromResult(EmailDelivery.ToEveryone);
         }
     }
 }

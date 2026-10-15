@@ -24,7 +24,7 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
         _pool = new SmtpConnectionPool(timeProvider ?? TimeProvider.System);
     }
 
-    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    public async Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         var options = await _credentialStore.GetAsync<SmtpOptions>(message.TenantId, ChannelCredentialNames.Smtp, cancellationToken)
             ?? throw new InvalidOperationException("Smtp channel credentials have not been configured.");
@@ -56,14 +56,13 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
         {
             if (gate is null)
             {
-                await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
-                return;
+                return await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
             }
 
             await gate.WaitAsync(cancellationToken);
             try
             {
-                await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
+                return await DeliverAsync(session, options, host, port, mimeMessage, cancellationToken);
             }
             finally
             {
@@ -78,15 +77,17 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
 
     public void Dispose() => _pool.Dispose();
 
-    private async Task DeliverAsync(string session, SmtpOptions options, string host, int port, MimeMessage mimeMessage, CancellationToken cancellationToken)
+    private async Task<EmailDelivery> DeliverAsync(string session, SmtpOptions options, string host, int port, MimeMessage mimeMessage, CancellationToken cancellationToken)
     {
         if (_pool.TryTake(session) is { } kept)
         {
             try
             {
+                kept.ForgetRefused();
                 await kept.SendAsync(mimeMessage, cancellationToken);
+                var delivery = new EmailDelivery(kept.TakeRefused());
                 _pool.Return(session, kept);
-                return;
+                return delivery;
             }
             catch (Exception ex) when (IsClosedConnection(ex) && !cancellationToken.IsCancellationRequested)
             {
@@ -101,7 +102,7 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
             }
         }
 
-        var client = new SmtpClient();
+        var client = new TrackingSmtpClient();
         try
         {
             await client.ConnectAsync(host, port, SecureSocketOptions.Auto, cancellationToken);
@@ -125,7 +126,9 @@ public sealed class SmtpEmailSender : IEmailSender, IDisposable
             throw;
         }
 
+        var refused = new EmailDelivery(client.TakeRefused());
         _pool.Return(session, client);
+        return refused;
     }
 
     private static bool IsClosedConnection(Exception exception) => exception

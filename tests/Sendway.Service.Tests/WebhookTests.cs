@@ -223,8 +223,8 @@ public class WebhookTests : IClassFixture<WebApplicationFactory<Program>>, IAsyn
 
         public void FailWith(Exception failure) => _failure = failure;
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) =>
-            _failure is null ? Task.CompletedTask : Task.FromException(_failure);
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default) =>
+            _failure is null ? Task.FromResult(EmailDelivery.ToEveryone) : Task.FromException<EmailDelivery>(_failure);
     }
 
     private sealed record WebhookCall(Uri Url, string Secret, Guid EventId, string Body);

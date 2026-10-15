@@ -252,6 +252,9 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
         public string ReadPayload(ClaimedMessage message) => throw new InvalidOperationException(Cause);
 
+        public Task RecordRefusedRecipientsAsync(ClaimedMessage claim, IReadOnlyList<RefusedRecipient> refused, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
         public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task MarkFailedAsync(ClaimedMessage claim, string error, string? reason = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -269,6 +272,6 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
     private sealed class NoopEmailSender : IEmailSender
     {
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.FromResult(EmailDelivery.ToEveryone);
     }
 }

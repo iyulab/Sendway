@@ -57,6 +57,7 @@ public sealed record Message(
     [property: JsonPropertyName("status")] string StatusText,
     string? Error,
     [property: JsonPropertyName("reason")] string? ReasonText,
+    IReadOnlyList<RefusedRecipient>? RefusedRecipients,
     int Attempts,
     DateTimeOffset AcceptedAt,
     DateTimeOffset? CompletedAt)
@@ -69,6 +70,9 @@ public sealed record Message(
     [JsonIgnore]
     public FailureReason? Reason => ReasonText is null ? null : Names.Reason(ReasonText);
 }
+
+/// <summary>An email recipient the mail server refused for good while it accepted the others, with its reply.</summary>
+public sealed record RefusedRecipient(string Address, string Error);
 
 /// <summary>Where a message is in its delivery.</summary>
 public enum MessageState

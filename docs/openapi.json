@@ -355,6 +355,7 @@
           "status",
           "error",
           "reason",
+          "refusedRecipients",
           "attempts",
           "acceptedAt",
           "completedAt"
@@ -398,6 +399,15 @@
               "null",
               "string"
             ]
+          },
+          "refusedRecipients": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RefusedRecipient"
+            }
           },
           "attempts": {
             "type": "integer",
@@ -463,6 +473,21 @@
             ],
             "type": "string",
             "description": "What went wrong, for code to branch on."
+          }
+        }
+      },
+      "RefusedRecipient": {
+        "required": [
+          "address",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
           }
         }
       },

@@ -117,6 +117,9 @@ namespace Sendway.Core.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("RefusedRecipients")
+                        .HasColumnType("text");
+
                     b.Property<string>("RequestHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

@@ -126,6 +126,15 @@ public sealed class MessageOutbox : IMessageOutbox
         }
     }
 
+    public async Task RecordRefusedRecipientsAsync(ClaimedMessage claim, IReadOnlyList<RefusedRecipient> refused, CancellationToken cancellationToken = default)
+    {
+        var stored = RefusedRecipient.Serialize(refused);
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await db.MessageRecords
+            .Where(m => m.Id == claim.Id && m.AttemptCount == claim.AttemptCount)
+            .ExecuteUpdateAsync(update => update.SetProperty(m => m.RefusedRecipients, stored), cancellationToken);
+    }
+
     public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) =>
         CompleteAsync(claim, DeliveryStatus.Sent, error: null, reason: null, cancellationToken);
 

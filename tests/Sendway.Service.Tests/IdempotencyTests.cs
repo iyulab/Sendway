@@ -176,7 +176,7 @@ public class IdempotencyTests : IClassFixture<WebApplicationFactory<Program>>, I
 
         public void FailNextCalls(int count) => _failuresRemaining = count;
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public Task<EmailDelivery> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             CallCount++;
             if (_failuresRemaining > 0)
@@ -184,7 +184,7 @@ public class IdempotencyTests : IClassFixture<WebApplicationFactory<Program>>, I
                 _failuresRemaining--;
                 throw new InvalidOperationException("simulated transient SMTP failure");
             }
-            return Task.CompletedTask;
+            return Task.FromResult(EmailDelivery.ToEveryone);
         }
     }
 }

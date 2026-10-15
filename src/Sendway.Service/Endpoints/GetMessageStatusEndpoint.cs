@@ -24,6 +24,7 @@ public static class GetMessageStatusEndpoint
                 record.Status.ToString(),
                 record.Error,
                 record.FailureReason,
+                RefusedRecipient.Parse(record.RefusedRecipients),
                 record.AttemptCount,
                 record.AcceptedAt,
                 record.CompletedAt));

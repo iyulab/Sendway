@@ -84,6 +84,18 @@ public class ClientTests
     }
 
     [Fact]
+    public async Task RefusedRecipients_AreReadWithTheServersReply()
+    {
+        var client = Client(_ => Json(HttpStatusCode.OK,
+            """{"id":"3f2b1c4e-0000-4000-8000-000000000001","channel":"email","recipient":"a@b.c, typo@b.c","status":"Sent","error":null,"reason":null,"refusedRecipients":[{"address":"typo@b.c","error":"550 5.1.1 no such user"}],"attempts":1,"acceptedAt":"2026-10-15T12:00:00Z","completedAt":"2026-10-15T12:00:01Z"}"""), out _);
+
+        var message = await client.GetMessageAsync(Guid.NewGuid());
+
+        Assert.Equal(MessageState.Sent, message.Status);
+        Assert.Equal(new RefusedRecipient("typo@b.c", "550 5.1.1 no such user"), Assert.Single(message.RefusedRecipients!));
+    }
+
+    [Fact]
     public async Task ValuesThisVersionDoesNotKnow_ReadAsUnknownWithTheTextKept()
     {
         var client = Client(_ => Json(HttpStatusCode.OK,

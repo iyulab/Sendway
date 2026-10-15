@@ -26,6 +26,7 @@ public static class MessageEvent
                     message.Status.ToString(),
                     message.Error,
                     message.FailureReason,
+                    RefusedRecipient.Parse(message.RefusedRecipients),
                     message.AttemptCount,
                     message.AcceptedAt,
                     message.CompletedAt)),
@@ -40,6 +41,7 @@ public static class MessageEvent
         string Status,
         string? Error,
         string? Reason,
+        IReadOnlyList<RefusedRecipient>? RefusedRecipients,
         int Attempts,
         DateTimeOffset AcceptedAt,
         DateTimeOffset? CompletedAt);

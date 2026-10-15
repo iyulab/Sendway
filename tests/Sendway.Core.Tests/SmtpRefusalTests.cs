@@ -80,15 +80,60 @@ public class SmtpRefusalTests
         await Assert.ThrowsAsync<MailKit.Security.AuthenticationException>(() => sender.SendAsync(Message("user@example.com")));
     }
 
-    // The recipients of one message share one transaction: one refused address ends it for all of them.
+    // One mistyped address must not keep the others from getting the message: the recipients refused for
+    // good are left out and named, the rest receive it.
     [Fact]
-    public async Task OneRefusedRecipientAmongSeveral_EndsTheWholeMessage()
+    public async Task ARecipientRefusedForGoodAmongSeveral_IsLeftOutAndTheOthersReceiveIt()
     {
         await using var server = new TestSmtpServer();
         using var sender = SenderFor(server);
 
-        await Assert.ThrowsAsync<InvalidRecipientException>(() => sender.SendAsync(Message("user@example.com", "reject@example.com")));
+        var delivery = await sender.SendAsync(Message("user@example.com", "reject@example.com", "other@example.com"));
+
+        var refused = Assert.Single(delivery.RefusedRecipients);
+        Assert.Equal("reject@example.com", refused.Address);
+        Assert.Contains("5.1.1", refused.Error);
+        Assert.Equal(1, server.Delivered);
+    }
+
+    // A temporary refusal abandons the message before its content is sent, so nobody has it and retrying
+    // it whole sends no one a second copy.
+    [Fact]
+    public async Task ARecipientRefusedForNowAmongSeveral_LeavesTheWholeMessageToBeRetried()
+    {
+        await using var server = new TestSmtpServer();
+        using var sender = SenderFor(server);
+
+        await Assert.ThrowsAsync<SmtpCommandException>(() => sender.SendAsync(Message("user@example.com", "tempfail@example.com")));
 
         Assert.Equal(0, server.Delivered);
+    }
+
+    [Fact]
+    public async Task EveryRecipientRefusedForGood_EndsTheMessageNamingThemAll()
+    {
+        await using var server = new TestSmtpServer();
+        using var sender = SenderFor(server);
+
+        var exception = await Assert.ThrowsAsync<InvalidRecipientException>(() =>
+            sender.SendAsync(Message("reject@example.com", "plainreject@example.com")));
+
+        Assert.Contains("reject@example.com", exception.Message);
+        Assert.Contains("plainreject@example.com", exception.Message);
+        Assert.Equal(0, server.Delivered);
+    }
+
+    // A kept connection carries no refusals from the message it sent before.
+    [Fact]
+    public async Task TheNextMessageOnAKeptConnection_StartsWithNoRefusals()
+    {
+        await using var server = new TestSmtpServer();
+        using var sender = SenderFor(server);
+
+        await sender.SendAsync(Message("user@example.com", "reject@example.com"));
+        var next = await sender.SendAsync(Message("user@example.com"));
+
+        Assert.Empty(next.RefusedRecipients);
+        Assert.Equal(1, server.SessionsOpened);
     }
 }
