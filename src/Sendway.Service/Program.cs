@@ -32,8 +32,8 @@ builder.Services.AddDbContextFactory<SendwayDbContext>((services, options) =>
     var connectionString = configuration.GetConnectionString("Sendway")
         ?? "Host=localhost;Database=sendway;Username=postgres;Password=postgres";
 
-    // Tests substitute an isolated Sqlite file per test class instead of standing up a real
-    // Postgres server (see Sendway.Service.Tests.TestIsolatedStorage).
+    // Sqlite is the local try-out path (README) and what tests use, with an isolated file per test
+    // class (see Sendway.Service.Tests.TestIsolatedStorage). Deployments use PostgreSQL.
     if (configuration["Sendway:DatabaseProvider"] == "Sqlite")
     {
         options.UseSqlite(connectionString);

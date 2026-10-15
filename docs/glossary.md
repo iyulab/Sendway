@@ -10,5 +10,5 @@
 | 메시지(Message) | 접수된 발송 요청 하나. 접수부터 발송 결과까지 하나의 ID로 추적됩니다 |
 | 전달 워커(Delivery worker) | 접수된 메시지를 꺼내 발송을 시도하고 결과를 기록하는 백그라운드 구성요소 |
 | 발송 이력(History) | 과거 발송 작업 기록 |
-| 자격증명(Credential) | 채널 연동에 필요한 접속 정보 (SMTP 계정, FCM/APNs 키 등) |
+| 자격증명(Credential) | 채널 연동에 필요한 접속 정보 (SMTP 계정, Microsoft Graph 앱, FCM 서비스 계정 키, SOLAPI API 키 등) |
 | 이벤트(Event) | 메시지의 최종 발송 결과를 테넌트의 웹훅 엔드포인트에 알리는 통지 |

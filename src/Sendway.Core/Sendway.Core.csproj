@@ -15,8 +15,8 @@
     <PackageReference Include="FirebaseAdmin" Version="3.7.0" />
     <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.13" />
-    <!-- Sqlite is test-only (tests build their own SqliteTempDatabase context, bypassing Program.cs);
-         the running service uses Npgsql — Sqlite over a network-mounted volume corrupts under EF Core's
+    <!-- Sqlite backs the test suite and the local try-out path (Sendway:DatabaseProvider=Sqlite);
+         deployments use Npgsql — Sqlite over a network-mounted volume corrupts under EF Core's
          default WAL journal mode. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />

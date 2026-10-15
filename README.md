@@ -2,16 +2,16 @@
 
 [![CI](https://github.com/iyulab/Sendway/actions/workflows/ci.yml/badge.svg)](https://github.com/iyulab/Sendway/actions/workflows/ci.yml)
 
-이메일 · SMS · 앱 푸시 · 슬랙/텔레그램 등 다양한 채널의 메시지 발송을 하나의 API로 통합하는 백엔드 서비스입니다.
+이메일 · SMS · 앱 푸시 메시지 발송을 하나의 HTTP API로 통합하는 백엔드 서비스입니다. 다른 채널(슬랙·텔레그램 등)은 필요가 생기면 어댑터로 붙입니다.
 
 ## 무엇을 하는가
 
-호출하는 서비스는 발송 대상과 내용만 전달하면 됩니다. 채널별 연동(SMTP, FCM/APNs, 게이트웨이 API 등), 재시도, 발송 이력 관리는 Sendway가 맡습니다.
+호출하는 서비스는 발송 대상과 내용만 전달하면 됩니다. 채널별 연동(SMTP·Microsoft Graph, Firebase Cloud Messaging, SMS 게이트웨이), 재시도, 발송 이력 관리는 Sendway가 맡습니다.
 
 ## 무엇이 아닌가
 
 - 사용자 신원이나 구독 정보를 관리하는 시스템이 아닙니다 — 매 요청마다 수신자 정보를 함께 전달해야 합니다.
-- 대량 마케팅 캠페인 발송 도구가 아닙니다 — 트랜잭셔널(이벤트성) 발송에 초점을 둡니다.
+- 대량 마케팅 캠페인 발송 도구가 아닙니다 — 트랜잭셔널(이벤트성) 발송에 초점을 둡니다. 광고성 문자(수신거부 번호·야간 제한 같은 광고 규정)도 다루지 않습니다.
 - 운영 관제 대시보드를 제공하지 않습니다 — 현재는 API로만 상태를 조회합니다.
 
 ## 현재 상태
@@ -20,8 +20,7 @@
 
 ## 시작하는 방법
 
-- **SDK**: C# 라이브러리로 기존 .NET 프로젝트에 직접 포함
-- **Docker 서비스**: 독립 실행형 이미지를 관리형 클라우드 인스턴스나 자체 환경에 배포, 언어 무관하게 HTTP API로 호출
+독립 실행형 이미지를 관리형 클라우드 인스턴스나 자체 환경에 배포하고, 언어와 무관하게 HTTP API로 호출합니다. 프로젝트에 라이브러리로 포함하는 경로는 없고, 언어별 클라이언트 라이브러리도 아직 없습니다.
 
 ```bash
 docker build -f src/Sendway.Service/Dockerfile -t sendway-service .
@@ -34,7 +33,7 @@ docker run -p 8080:8080 \
   sendway-service
 ```
 
-위 예시는 별도 데이터베이스 없이 로컬에서 바로 띄워보기 위한 SQLite 옵션입니다 — SQLite는 파일이
+위 예시는 별도 데이터베이스 없이 로컬에서 바로 띄워보기 위한 SQLite 경로입니다(테스트 스위트의 기본 저장소도 SQLite입니다) — SQLite는 파일이
 네트워크 마운트 볼륨(클라우드 스토리지 등)에 있으면 안정적으로 동작하지 않으므로, 실제 배포에서는
 `ConnectionStrings__Sendway`에 PostgreSQL 연결 문자열을 넣고 `Sendway__DatabaseProvider`는 생략(기본값이
 PostgreSQL)합니다. 실제로 운영할 때의 설정·업그레이드·백업·장애 대응은 [운영](docs/operations.md)에 있습니다. 채널 자격증명(암호화됨)과 Data Protection 키 링은 `/data`에 저장됩니다 — 이 볼륨을
