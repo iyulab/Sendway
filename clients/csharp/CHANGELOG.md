@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-15
 
 - `SendwayClient`: send email, SMS and app push (with an optional `Idempotency-Key` and `ExpiresAt`), and read a
   message's status and outcome.
