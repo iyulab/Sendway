@@ -20,7 +20,7 @@
 
 ## 시작하는 방법
 
-독립 실행형 이미지를 관리형 클라우드 인스턴스나 자체 환경에 배포하고, 언어와 무관하게 HTTP API로 호출합니다. 프로젝트에 라이브러리로 포함하는 경로는 없고, 언어별 클라이언트 라이브러리도 아직 없습니다.
+독립 실행형 이미지를 관리형 클라우드 인스턴스나 자체 환경에 배포하고, 언어와 무관하게 HTTP API로 호출합니다. 프로젝트에 라이브러리로 포함하는 경로는 없습니다. .NET에서는 HTTP API를 감싼 클라이언트 [`Sendway.Client`](clients/csharp/README.md)를 쓸 수 있고(NuGet 게시 전에는 소스로), 다른 언어는 [OpenAPI 기술](docs/openapi.json)로 클라이언트를 만들 수 있습니다.
 
 ```bash
 docker build -f src/Sendway.Service/Dockerfile -t sendway-service .

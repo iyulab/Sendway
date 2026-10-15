@@ -1,0 +1,50 @@
+name: Release client
+
+# Sendway.Client (clients/csharp) to nuget.org, driven only by a `client-v<version>` tag: a push to main never
+# publishes. The tests ran in CI on the tagged commit; this checks that the tag, the project and the changelog
+# agree and that the version is not on nuget.org yet, then packs and pushes.
+
+on:
+  push:
+    tags: ['client-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-client
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: pack and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROJECT: clients/csharp/src/Sendway.Client/Sendway.Client.csproj
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # A mismatch fails here, not as a package nobody meant to publish; a version already on nuget.org is a
+      # mistake to report, not one to skip quietly.
+      - name: The tag, the project, the changelog and nuget.org agree
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#client-v}"
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$PROJECT" | head -n1 | tr -d '\r')
+          [ "$tag" = "$version" ] || { echo "::error::The tag says $tag, $PROJECT says $version."; exit 1; }
+          grep -q "^## $version — [0-9]" clients/csharp/CHANGELOG.md || { echo "::error::clients/csharp/CHANGELOG.md has no dated $version."; exit 1; }
+          if curl -fsS https://api.nuget.org/v3-flatcontainer/sendway.client/index.json 2>/dev/null | grep -q "\"$version\""; then
+            echo "::error::Sendway.Client $version is already on nuget.org."; exit 1
+          fi
+
+      - run: dotnet pack "$PROJECT" --configuration Release --output nupkg
+
+      - name: Push to nuget.org
+        run: dotnet nuget push nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY"
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

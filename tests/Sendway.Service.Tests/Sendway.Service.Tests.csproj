@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sendway.Service\Sendway.Service.csproj" />
+    <ProjectReference Include="..\..\clients\csharp\src\Sendway.Client\Sendway.Client.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/clients/">
+    <Project Path="clients/csharp/src/Sendway.Client/Sendway.Client.csproj" />
+    <Project Path="clients/csharp/tests/Sendway.Client.Tests/Sendway.Client.Tests.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Sendway.Core/Sendway.Core.csproj" />
     <Project Path="src/Sendway.Service/Sendway.Service.csproj" />

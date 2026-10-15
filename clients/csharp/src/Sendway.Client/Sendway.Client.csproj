@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Comments are for what needs saying: not every member needs one (CS1591), and a parameter list may explain only
+         some of its parameters (CS1573). -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Version>0.1.0</Version>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sendway.Client</PackageId>
+    <Authors>iyulab</Authors>
+    <Copyright>Copyright (c) 2026 iyulab</Copyright>
+    <Description>Client for Sendway: send email, SMS and app push, read a message's outcome with a machine-readable failure reason, and verify the signed outcome webhooks (Standard Webhooks).</Description>
+    <PackageTags>sendway;email;sms;push;notifications;webhooks</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/iyulab/Sendway</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/iyulab/Sendway</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
