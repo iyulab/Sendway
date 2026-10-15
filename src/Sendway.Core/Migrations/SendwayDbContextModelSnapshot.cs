@@ -96,6 +96,10 @@ namespace Sendway.Core.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("text");
 
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");

@@ -50,6 +50,10 @@ public abstract class DeliveryProcessor<TClaim> : IDeliveryProcessor where TClai
     // fail the same way.
     protected virtual bool IsRejection(Exception exception) => false;
 
+    // The machine-readable cause recorded with a final failure: for the rejection that ended the item,
+    // or, when `rejection` is null, for attempts that ran out. Null for queues that report none.
+    protected virtual string? FailureReason(Exception? rejection) => null;
+
     // Claims and delivers one item. Returns false when nothing was due.
     public async Task<bool> ProcessNextAsync(CancellationToken stoppingToken = default)
     {
@@ -82,7 +86,7 @@ public abstract class DeliveryProcessor<TClaim> : IDeliveryProcessor where TClai
         // nothing counted the failure): stop here rather than attempt without limit.
         if (item.AttemptCount > options.MaxAttempts)
         {
-            await _queue.MarkFailedAsync(item, "Delivery attempts did not complete.", CancellationToken.None);
+            await _queue.MarkFailedAsync(item, "Delivery attempts did not complete.", FailureReason(null), CancellationToken.None);
             return;
         }
 
@@ -102,7 +106,7 @@ public abstract class DeliveryProcessor<TClaim> : IDeliveryProcessor where TClai
         }
         catch (Exception ex) when (IsRejection(ex))
         {
-            await _queue.MarkFailedAsync(item, ex.Message, CancellationToken.None);
+            await _queue.MarkFailedAsync(item, ex.Message, FailureReason(ex), CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -121,7 +125,7 @@ public abstract class DeliveryProcessor<TClaim> : IDeliveryProcessor where TClai
 
             if (isLastAttempt)
             {
-                await _queue.MarkFailedAsync(item, error, CancellationToken.None);
+                await _queue.MarkFailedAsync(item, error, FailureReason(null), CancellationToken.None);
             }
             else
             {

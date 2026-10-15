@@ -134,6 +134,7 @@ public class SendSmsEndpointTests : IClassFixture<WebApplicationFactory<Program>
         var status = (await client.GetFromJsonAsync<MessageStatusResponse>($"/messages/{body!.Id}"))!;
         Assert.Equal("Failed", status.Status);
         Assert.Equal("Solapi refused the message: 1061 opted out", status.Error);
+        Assert.Equal("message_refused", status.Reason);
         Assert.Equal(1, status.Attempts);
     }
 

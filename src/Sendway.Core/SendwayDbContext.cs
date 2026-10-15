@@ -33,6 +33,7 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
             message.Property(m => m.Status).HasConversion<string>();
             message.Property(m => m.IdempotencyKey).HasMaxLength(255);
             message.Property(m => m.RequestHash).HasMaxLength(64);
+            message.Property(m => m.FailureReason).HasMaxLength(64);
 
             // What makes an idempotency key a reservation rather than a cache entry: a second
             // insert with the same tenant and key fails, even while the first message is still in

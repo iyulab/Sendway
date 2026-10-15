@@ -126,10 +126,10 @@ public sealed class MessageOutbox : IMessageOutbox
     }
 
     public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) =>
-        CompleteAsync(claim, DeliveryStatus.Sent, error: null, cancellationToken);
+        CompleteAsync(claim, DeliveryStatus.Sent, error: null, reason: null, cancellationToken);
 
-    public Task MarkFailedAsync(ClaimedMessage claim, string error, CancellationToken cancellationToken = default) =>
-        CompleteAsync(claim, DeliveryStatus.Failed, error, cancellationToken);
+    public Task MarkFailedAsync(ClaimedMessage claim, string error, string? reason = null, CancellationToken cancellationToken = default) =>
+        CompleteAsync(claim, DeliveryStatus.Failed, error, reason, cancellationToken);
 
     public async Task ScheduleRetryAsync(ClaimedMessage claim, string error, TimeSpan delay, CancellationToken cancellationToken = default)
     {
@@ -222,12 +222,20 @@ public sealed class MessageOutbox : IMessageOutbox
     // Recording the final outcome and queueing the event that announces it happen in one
     // transaction: there is never an outcome without its event, nor an event for an outcome that
     // wasn't recorded.
-    private async Task CompleteAsync(ClaimedMessage claim, DeliveryStatus status, string? error, CancellationToken cancellationToken)
+    private async Task CompleteAsync(ClaimedMessage claim, DeliveryStatus status, string? error, string? reason, CancellationToken cancellationToken)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         var recorded = await _queue.CompleteAsync(db, claim, status, error, cancellationToken) == 1;
+
+        // In the same transaction as the outcome, and before the event below reads the row back.
+        if (recorded && reason is not null)
+        {
+            await db.MessageRecords
+                .Where(m => m.Id == claim.Id)
+                .ExecuteUpdateAsync(update => update.SetProperty(m => m.FailureReason, reason), cancellationToken);
+        }
         var eventQueued = false;
 
         if (recorded && await db.WebhookEndpoints.AnyAsync(e => e.TenantId == claim.TenantId, cancellationToken))

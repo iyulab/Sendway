@@ -47,4 +47,11 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
     }
 
     protected override bool IsRejection(Exception exception) => exception is InvalidRecipientException or MessageRejectedException;
+
+    protected override string FailureReason(Exception? rejection) => rejection switch
+    {
+        InvalidRecipientException => MessageFailureReasons.RecipientRefused,
+        MessageRejectedException rejected => rejected.Reason,
+        _ => MessageFailureReasons.AttemptsExhausted
+    };
 }

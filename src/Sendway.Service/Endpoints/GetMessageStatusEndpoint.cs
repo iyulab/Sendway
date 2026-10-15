@@ -23,6 +23,7 @@ public static class GetMessageStatusEndpoint
                 record.Recipient,
                 record.Status.ToString(),
                 record.Error,
+                record.FailureReason,
                 record.AttemptCount,
                 record.AcceptedAt,
                 record.CompletedAt));

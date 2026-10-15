@@ -12,7 +12,9 @@ public interface IDeliveryQueue<TClaim> where TClaim : ClaimedDelivery
 
     Task MarkSentAsync(TClaim claim, CancellationToken cancellationToken = default);
 
-    Task MarkFailedAsync(TClaim claim, string error, CancellationToken cancellationToken = default);
+    // `reason` is the machine-readable cause, for queues whose items report one (see
+    // MessageFailureReasons); `error` is the human-readable detail.
+    Task MarkFailedAsync(TClaim claim, string error, string? reason = null, CancellationToken cancellationToken = default);
 
     Task ScheduleRetryAsync(TClaim claim, string error, TimeSpan delay, CancellationToken cancellationToken = default);
 

@@ -71,17 +71,20 @@ public class SolapiSmsSenderTests
     }
 
     [Theory]
-    [InlineData("1061")]
-    [InlineData("1029")]
-    [InlineData("1069")]
-    [InlineData("2254")]
-    public async Task Send_WhenTheMessageItselfIsRefused_RejectsIt(string statusCode)
+    [InlineData("1061", MessageFailureReasons.MessageRefused)]
+    [InlineData("1029", MessageFailureReasons.MessageRefused)]
+    [InlineData("2254", MessageFailureReasons.MessageRefused)]
+    [InlineData("1065", MessageFailureReasons.RecipientRefused)]
+    [InlineData("2065", MessageFailureReasons.RecipientRefused)]
+    [InlineData("1069", MessageFailureReasons.RecipientRateLimited)]
+    public async Task Send_WhenTheMessageItselfIsRefused_RejectsItWithTheReason(string statusCode, string reason)
     {
         _handler.Respond(HttpStatusCode.OK, Failed(statusCode, "refused"));
 
         var ex = await Assert.ThrowsAsync<MessageRejectedException>(() => _sender.SendAsync(Sms("+821012345678")));
 
         Assert.Equal($"Solapi refused the message: {statusCode} refused", ex.Message);
+        Assert.Equal(reason, ex.Reason);
     }
 
     [Theory]

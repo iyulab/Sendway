@@ -16,4 +16,8 @@ public sealed class MessageRecord : QueuedDelivery
     // Fingerprint of the request the idempotency key was first used with — a later request reusing
     // the key with different content is a caller error, not a replay.
     public string? RequestHash { get; init; }
+
+    // Why the message ended Failed (MessageFailureReasons); null otherwise, and for messages that
+    // failed before the reason was recorded.
+    public string? FailureReason { get; set; }
 }

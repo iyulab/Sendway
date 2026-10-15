@@ -35,7 +35,7 @@ public sealed class WebhookOutbox : IDeliveryQueue<ClaimedWebhook>
         await _queue.CompleteAsync(db, claim, DeliveryStatus.Sent, error: null, cancellationToken);
     }
 
-    public async Task MarkFailedAsync(ClaimedWebhook claim, string error, CancellationToken cancellationToken = default)
+    public async Task MarkFailedAsync(ClaimedWebhook claim, string error, string? reason = null, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         await _queue.CompleteAsync(db, claim, DeliveryStatus.Failed, error, cancellationToken);

@@ -254,7 +254,7 @@ public class ApiProblemTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
         public Task MarkSentAsync(ClaimedMessage claim, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task MarkFailedAsync(ClaimedMessage claim, string error, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task MarkFailedAsync(ClaimedMessage claim, string error, string? reason = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task ScheduleRetryAsync(ClaimedMessage claim, string error, TimeSpan delay, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

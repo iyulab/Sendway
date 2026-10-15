@@ -25,6 +25,7 @@ public static class MessageEvent
                     message.Recipient,
                     message.Status.ToString(),
                     message.Error,
+                    message.FailureReason,
                     message.AttemptCount,
                     message.AcceptedAt,
                     message.CompletedAt)),
@@ -38,6 +39,7 @@ public static class MessageEvent
         string Recipient,
         string Status,
         string? Error,
+        string? Reason,
         int Attempts,
         DateTimeOffset AcceptedAt,
         DateTimeOffset? CompletedAt);

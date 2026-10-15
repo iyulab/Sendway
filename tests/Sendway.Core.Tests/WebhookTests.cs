@@ -230,6 +230,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
         Assert.Equal("Sent", data.GetProperty("status").GetString());
         Assert.Equal(1, data.GetProperty("attempts").GetInt32());
         Assert.Equal(JsonValueKind.Null, data.GetProperty("error").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("reason").ValueKind);
         Assert.True(data.TryGetProperty("acceptedAt", out _));
         Assert.NotEqual(JsonValueKind.Null, data.GetProperty("completedAt").ValueKind);
     }
@@ -240,7 +241,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
         await _endpoints.SetAsync(_tenantId, EndpointUrl);
         var claimed = await ClaimMessageAsync();
 
-        await _messages.MarkFailedAsync(claimed, "the mailbox does not exist");
+        await _messages.MarkFailedAsync(claimed, "the mailbox does not exist", MessageFailureReasons.RecipientRefused);
 
         var queued = Assert.Single(await EventsAsync());
         Assert.Equal(MessageEvent.Failed, queued.EventType);
@@ -249,6 +250,7 @@ public class WebhookDeliveryTests : IAsyncLifetime
         Assert.Equal("message.failed", body.RootElement.GetProperty("type").GetString());
         Assert.Equal("Failed", body.RootElement.GetProperty("data").GetProperty("status").GetString());
         Assert.Equal("the mailbox does not exist", body.RootElement.GetProperty("data").GetProperty("error").GetString());
+        Assert.Equal("recipient_refused", body.RootElement.GetProperty("data").GetProperty("reason").GetString());
     }
 
     [Fact]

@@ -132,7 +132,19 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var stored = await StoredAsync(enqueued.Record!.Id);
         Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("the recipient opted out", stored.Error);
+        Assert.Equal(MessageFailureReasons.MessageRefused, stored.FailureReason);
         Assert.Equal(1, stored.AttemptCount);
+    }
+
+    [Fact]
+    public async Task ProcessNext_WhenTheProviderNamesWhyItRejected_RecordsThatReason()
+    {
+        _emailSender.FailWith(new MessageRejectedException("too many to this recipient", MessageFailureReasons.RecipientRateLimited));
+        var id = await EnqueueEmailAsync();
+
+        await _processor.ProcessNextAsync();
+
+        Assert.Equal(MessageFailureReasons.RecipientRateLimited, (await StoredAsync(id)).FailureReason);
     }
 
     [Fact]
@@ -146,6 +158,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var stored = await StoredAsync(id);
         Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("the mailbox does not exist", stored.Error);
+        Assert.Equal(MessageFailureReasons.RecipientRefused, stored.FailureReason);
         Assert.Equal(1, stored.AttemptCount);
         Assert.False(await _processor.ProcessNextAsync());
     }
@@ -161,6 +174,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var afterFailure = await StoredAsync(id);
         Assert.Equal(DeliveryStatus.Queued, afterFailure.Status);
         Assert.Equal("connection refused", afterFailure.Error);
+        Assert.Null(afterFailure.FailureReason);
         Assert.Equal(_time.GetUtcNow() + _options.RetryBaseDelay, afterFailure.NextAttemptAt);
 
         // Not due yet: nothing is attempted before the delay has passed.
@@ -172,6 +186,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
 
         var afterRetry = await StoredAsync(id);
         Assert.Equal(DeliveryStatus.Sent, afterRetry.Status);
+        Assert.Null(afterRetry.FailureReason);
         Assert.Equal(2, afterRetry.AttemptCount);
         Assert.Null(afterRetry.Error);
     }
@@ -245,6 +260,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var stored = await StoredAsync(id);
         Assert.Equal(DeliveryStatus.Failed, stored.Status);
         Assert.Equal("connection refused", stored.Error);
+        Assert.Equal(MessageFailureReasons.AttemptsExhausted, stored.FailureReason);
         Assert.Equal(_options.MaxAttempts, stored.AttemptCount);
         Assert.Equal(_options.MaxAttempts, _emailSender.CallCount);
         Assert.False(await _processor.ProcessNextAsync());
@@ -301,6 +317,7 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
 
         var stored = await StoredAsync(id);
         Assert.Equal(DeliveryStatus.Failed, stored.Status);
+        Assert.Equal(MessageFailureReasons.AttemptsExhausted, stored.FailureReason);
         Assert.Equal(0, _emailSender.CallCount);
     }
 

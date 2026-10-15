@@ -131,7 +131,7 @@ curl http://localhost:8080/health
 | 증상 | 확인 | 조치 |
 |---|---|---|
 | `oldestDueSeconds`가 계속 커짐 | 로그의 `delivery loop failed`, 데이터베이스 연결 | 발송 워커가 멈췄거나 밀림. 데이터베이스 연결을 바로잡고 재시작. 모든 인스턴스가 `WorkerEnabled=false`가 아닌지 확인 |
-| `failedInLast24Hours`가 늘어남 | 실패한 메시지의 `error`, 로그의 `delivery attempt … failed` | 대개 발신 자격증명(SMTP 인증 실패, FCM 키, SOLAPI 잔액·발신번호). 해당 자격증명을 다시 등록 — 재시도를 기다리던 메시지는 새 값으로 나감 |
+| `failedInLast24Hours`가 늘어남 | 실패한 메시지의 `reason`(`attempts_exhausted`이면 운영 쪽 원인, 나머지는 목적지·내용 문제)과 `error`, 로그의 `delivery attempt … failed` | 대개 발신 자격증명(SMTP 인증 실패, FCM 키, SOLAPI 잔액·발신번호). 해당 자격증명을 다시 등록 — 재시도를 기다리던 메시지는 새 값으로 나감 |
 | 모든 요청이 `500` | 로그의 데이터베이스 오류 | 연결 문자열·비밀번호(교체 직후라면 「비밀값 교체」의 순서) |
 | 한 테넌트만 `401` | `GET /admin/tenants`의 `active`, 감사 로그의 `tenant.deactivated`·`tenant.key_rotated` | 비활성화됐거나 키가 바뀜. 겹침 없이 바꿨다면 새 키를 그 서비스에 배포 |
 | 한 테넌트가 `429` | 그 서비스의 호출량 | 정상 동작. 한도를 올리려면 `Sendway:RateLimit:RequestsPerMinute` |

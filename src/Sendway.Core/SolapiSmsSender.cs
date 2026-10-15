@@ -33,6 +33,11 @@ public sealed class SolapiSmsSender : ISmsSender
     // and a later attempt would get through only by arriving late, which is what that limit is there
     // to stop. Any other refusal (balance, sender number, credentials, a server error) can clear up,
     // and the message is attempted again.
+    // Within MessageRejections, the codes that say the recipient opted out of this sender's messages
+    // and the one that says the recipient hit the repeat-send limit; the rest refuse the message itself.
+    private static readonly HashSet<string> RecipientOptedOut = ["1065", "2065"];
+    private const string RepeatSendLimit = "1069";
+
     private static readonly HashSet<string> MessageRejections =
     [
         "1010", "1011", "1028", "1029", "1031", "1061", "1065", "1069",
@@ -104,11 +109,17 @@ public sealed class SolapiSmsSender : ISmsSender
         if (result?.FailedMessageList is [var failed, ..])
         {
             var reason = $"Solapi refused the message: {failed.StatusCode} {failed.StatusMessage}".TrimEnd();
-            throw MessageRejections.Contains(failed.StatusCode ?? "")
-                ? new MessageRejectedException(reason)
+            var code = failed.StatusCode ?? "";
+            throw MessageRejections.Contains(code)
+                ? new MessageRejectedException(reason, RejectionReason(code))
                 : new InvalidOperationException(reason);
         }
     }
+
+    private static string RejectionReason(string code) =>
+        RecipientOptedOut.Contains(code) ? MessageFailureReasons.RecipientRefused
+        : code == RepeatSendLimit ? MessageFailureReasons.RecipientRateLimited
+        : MessageFailureReasons.MessageRefused;
 
     private Uri BaseAddress => _httpClient.BaseAddress ?? DefaultBaseAddress;
 
