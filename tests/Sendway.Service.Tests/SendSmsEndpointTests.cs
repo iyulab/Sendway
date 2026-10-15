@@ -96,6 +96,36 @@ public class SendSmsEndpointTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
+    public async Task Post_WithADeadlineAlreadyPast_Returns400AndStoresNothing()
+    {
+        var response = await CreateAuthenticatedClient().PostAsJsonAsync(
+            "/messages/sms", new SendSmsRequest("+821012345678", "Body", DateTimeOffset.UtcNow.AddMinutes(-1)));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.Equal("expiresAt must be in the future.", problem!["detail"].ToString());
+    }
+
+    [Fact]
+    // What happens once a deadline passes is covered against a controlled clock in the Core tests;
+    // here, that the field is read and a message still within it goes out.
+    public async Task Post_WithADeadlineAhead_IsAcceptedAndSent()
+    {
+        var client = CreateAuthenticatedClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/messages/sms", new SendSmsRequest("+821012345678", "Your code is 123456", DateTimeOffset.UtcNow.AddMinutes(3)));
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SendMessageResponse>();
+
+        await TestDelivery.DeliverPendingAsync(_factory);
+
+        var status = (await client.GetFromJsonAsync<MessageStatusResponse>($"/messages/{body!.Id}"))!;
+        Assert.Equal("Sent", status.Status);
+        Assert.Null(status.Reason);
+    }
+
+    [Fact]
     public async Task Post_WithANumberNotInE164Form_Returns400InvalidRecipient()
     {
         var response = await CreateAuthenticatedClient().PostAsJsonAsync("/messages/sms", new SendSmsRequest("010-1234-5678", "Body"));

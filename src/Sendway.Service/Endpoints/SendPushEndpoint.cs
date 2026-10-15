@@ -49,7 +49,8 @@ public static class SendPushEndpoint
                 signal,
                 MessageChannels.Push,
                 request.DeviceToken,
-                MessagePayload.Serialize(message));
+                MessagePayload.Serialize(message),
+                request.ExpiresAt);
         });
     }
 }

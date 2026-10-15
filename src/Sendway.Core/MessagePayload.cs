@@ -24,12 +24,12 @@ public static class MessagePayload
         return new EmailMessage(tenantId, email.To, email.Subject, email.Body, email.Cc, email.Bcc, email.HtmlBody);
     }
 
-    public static PushMessage ToPushMessage(Guid tenantId, string payload)
+    public static PushMessage ToPushMessage(Guid tenantId, string payload, DateTimeOffset? expiresAt = null)
     {
         var push = JsonSerializer.Deserialize<PushPayload>(payload)
             ?? throw new InvalidOperationException("The queued push payload is empty.");
 
-        return new PushMessage(tenantId, push.DeviceToken, push.Title, push.Body);
+        return new PushMessage(tenantId, push.DeviceToken, push.Title, push.Body) { ExpiresAt = expiresAt };
     }
 
     public static SmsMessage ToSmsMessage(Guid tenantId, string payload)

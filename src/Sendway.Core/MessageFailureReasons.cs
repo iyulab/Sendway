@@ -21,4 +21,7 @@ public static class MessageFailureReasons
     // Every attempt failed for a reason that could have cleared up (the provider unreachable or
     // overloaded, a credential or sender identity it refused) and there are none left.
     public const string AttemptsExhausted = "attempts_exhausted";
+
+    // The caller's `expiresAt` passed before the message could be sent, so it was not sent at all.
+    public const string Expired = "expired";
 }

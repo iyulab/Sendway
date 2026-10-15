@@ -18,8 +18,16 @@ public static class MessageAcceptance
         MessageDeliverySignal signal,
         string channel,
         string recipient,
-        string payload)
+        string payload,
+        DateTimeOffset? expiresAt = null)
     {
+        // A deadline already behind us would only produce a message that is never sent.
+        if (expiresAt is { } deadline &&
+            deadline <= httpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow())
+        {
+            return ApiProblem.BadRequest("expiresAt must be in the future.");
+        }
+
         string? idempotencyKey = null;
         if (httpContext.Request.Headers.TryGetValue("Idempotency-Key", out var keyValues) &&
             !string.IsNullOrWhiteSpace(keyValues))
@@ -35,7 +43,7 @@ public static class MessageAcceptance
 
         // No cancellation token: a caller that disconnects mid-request must not leave it undecided
         // whether the message was accepted.
-        var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey));
+        var result = await outbox.EnqueueAsync(new MessageSubmission(tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt));
 
         if (result.Outcome == EnqueueOutcome.ChannelNotConfigured)
         {

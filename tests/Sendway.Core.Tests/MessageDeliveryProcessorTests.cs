@@ -30,7 +30,8 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
             _smsSender,
             Options.Create(_options),
             new MessageDeliverySignal(),
-            NullLogger<MessageDeliveryProcessor>.Instance);
+            NullLogger<MessageDeliveryProcessor>.Instance,
+            _time);
     }
 
     public Task DisposeAsync()
@@ -84,6 +85,76 @@ public class MessageDeliveryProcessorTests : IAsyncLifetime
         var stored = await StoredAsync(enqueued.Record!.Id);
         Assert.Equal(DeliveryStatus.Sent, stored.Status);
         Assert.Equal(1, stored.AttemptCount);
+    }
+
+    private async Task<Guid> EnqueueEmailAsync(DateTimeOffset expiresAt)
+    {
+        var message = new EmailMessage(_tenantId, ["user@example.com"], "Subject", "Body");
+        var result = await _outbox.EnqueueAsync(new MessageSubmission(
+            _tenantId, MessageChannels.Email, "user@example.com", MessagePayload.Serialize(message), ExpiresAt: expiresAt));
+        return result.Record!.Id;
+    }
+
+    [Fact]
+    public async Task ProcessNext_WhenTheMessageExpiredBeforeItsAttempt_FailsWithoutSending()
+    {
+        var id = await EnqueueEmailAsync(_time.GetUtcNow() + TimeSpan.FromSeconds(10));
+        _time.Advance(TimeSpan.FromSeconds(10));
+
+        await _processor.ProcessNextAsync();
+
+        var stored = await StoredAsync(id);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
+        Assert.Equal(MessageFailureReasons.Expired, stored.FailureReason);
+        Assert.Equal(0, _emailSender.CallCount);
+        Assert.False(await _processor.ProcessNextAsync());
+    }
+
+    [Fact]
+    public async Task ProcessNext_NeverSchedulesARetryPastTheDeadline()
+    {
+        _emailSender.FailWith(new InvalidOperationException("connection refused"));
+        var expiresAt = _time.GetUtcNow() + TimeSpan.FromSeconds(20);
+        var id = await EnqueueEmailAsync(expiresAt);
+
+        await _processor.ProcessNextAsync();
+        Assert.Equal(_time.GetUtcNow() + _options.RetryBaseDelay, (await StoredAsync(id)).NextAttemptAt);
+
+        _time.Advance(_options.RetryBaseDelay);
+        await _processor.ProcessNextAsync();
+        // The second delay (30 s by default) would land past the deadline; the retry is due at it instead.
+        Assert.Equal(expiresAt, (await StoredAsync(id)).NextAttemptAt);
+
+        _time.Advance(expiresAt - _time.GetUtcNow());
+        await _processor.ProcessNextAsync();
+
+        var stored = await StoredAsync(id);
+        Assert.Equal(DeliveryStatus.Failed, stored.Status);
+        Assert.Equal(MessageFailureReasons.Expired, stored.FailureReason);
+        Assert.Equal(2, _emailSender.CallCount);
+    }
+
+    [Fact]
+    public async Task ProcessNext_SendsAMessageWhoseDeadlineIsStillAhead()
+    {
+        var id = await EnqueueEmailAsync(_time.GetUtcNow() + TimeSpan.FromMinutes(3));
+
+        await _processor.ProcessNextAsync();
+
+        Assert.Equal(DeliveryStatus.Sent, (await StoredAsync(id)).Status);
+    }
+
+    [Fact]
+    public async Task ProcessNext_HandsAPushItsDeadline()
+    {
+        var expiresAt = _time.GetUtcNow() + TimeSpan.FromMinutes(5);
+        var message = new PushMessage(_tenantId, "device-token-123", "The Title", "The Body");
+        await _outbox.EnqueueAsync(new MessageSubmission(
+            _tenantId, MessageChannels.Push, "device-token-123", MessagePayload.Serialize(message), ExpiresAt: expiresAt));
+
+        await _processor.ProcessNextAsync();
+
+        Assert.Equal(expiresAt, Assert.Single(_pushSender.Sent).ExpiresAt);
     }
 
     [Fact]

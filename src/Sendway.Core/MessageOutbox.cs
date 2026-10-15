@@ -64,7 +64,8 @@ public sealed class MessageOutbox : IMessageOutbox
             NextAttemptAt = now,
             Payload = _protector.Protect(submission.Payload),
             IdempotencyKey = submission.IdempotencyKey,
-            RequestHash = requestHash
+            RequestHash = requestHash,
+            ExpiresAt = submission.ExpiresAt
         };
 
         db.MessageRecords.Add(record);
@@ -108,7 +109,7 @@ public sealed class MessageOutbox : IMessageOutbox
 
         return record is null
             ? null
-            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, record.Payload!, record.AttemptCount);
+            : new ClaimedMessage(record.Id, record.TenantId, record.Channel, record.Payload!, record.AttemptCount, record.ExpiresAt);
     }
 
     public string ReadPayload(ClaimedMessage message)
@@ -133,6 +134,14 @@ public sealed class MessageOutbox : IMessageOutbox
 
     public async Task ScheduleRetryAsync(ClaimedMessage claim, string error, TimeSpan delay, CancellationToken cancellationToken = default)
     {
+        // Never later than the message's deadline: the attempt made then ends it as expired, rather
+        // than leaving it Queued long after it stopped being worth sending.
+        if (claim.ExpiresAt is { } expiresAt)
+        {
+            var untilExpiry = expiresAt - _timeProvider.GetUtcNow();
+            delay = untilExpiry < delay ? (untilExpiry > TimeSpan.Zero ? untilExpiry : TimeSpan.Zero) : delay;
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         await _queue.ScheduleRetryAsync(db, claim, error, delay, cancellationToken);
     }
@@ -299,7 +308,15 @@ public sealed class MessageOutbox : IMessageOutbox
 
     private static string ComputeRequestHash(MessageSubmission submission)
     {
-        var bytes = Encoding.UTF8.GetBytes(submission.Channel + "\n" + submission.Payload);
+        // The deadline is part of the request; appended only when present, so requests without one
+        // keep the fingerprint they had before deadlines existed.
+        var text = submission.Channel + "\n" + submission.Payload;
+        if (submission.ExpiresAt is { } expiresAt)
+        {
+            text += "\n" + expiresAt.UtcDateTime.ToString("O");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(text);
         return Convert.ToHexString(SHA256.HashData(bytes));
     }
 }

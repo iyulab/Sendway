@@ -37,7 +37,8 @@ public static class SendSmsEndpoint
                 signal,
                 MessageChannels.Sms,
                 message.To.ToString(),
-                MessagePayload.Serialize(message));
+                MessagePayload.Serialize(message),
+                request.ExpiresAt);
         });
     }
 }

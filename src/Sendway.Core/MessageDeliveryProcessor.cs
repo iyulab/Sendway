@@ -11,6 +11,7 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
     private readonly IPushSender _pushSender;
     private readonly ISmsSender _smsSender;
     private readonly IOptions<MessageDeliveryOptions> _options;
+    private readonly TimeProvider _timeProvider;
 
     public MessageDeliveryProcessor(
         IMessageOutbox outbox,
@@ -19,7 +20,8 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
         ISmsSender smsSender,
         IOptions<MessageDeliveryOptions> options,
         MessageDeliverySignal signal,
-        ILogger<MessageDeliveryProcessor> logger)
+        ILogger<MessageDeliveryProcessor> logger,
+        TimeProvider? timeProvider = null)
         : base(outbox, signal, logger)
     {
         _outbox = outbox;
@@ -27,6 +29,7 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
         _pushSender = pushSender;
         _smsSender = smsSender;
         _options = options;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public override string Name => "Message";
@@ -35,12 +38,18 @@ public sealed class MessageDeliveryProcessor : DeliveryProcessor<ClaimedMessage>
 
     protected override Task SendAsync(ClaimedMessage message, CancellationToken cancellationToken)
     {
+        if (message.ExpiresAt is { } expiresAt && expiresAt <= _timeProvider.GetUtcNow())
+        {
+            throw new MessageRejectedException(
+                $"The message expired at {expiresAt:O} before it could be sent.", MessageFailureReasons.Expired);
+        }
+
         var payload = _outbox.ReadPayload(message);
 
         return message.Channel switch
         {
             MessageChannels.Email => _emailSender.SendAsync(MessagePayload.ToEmailMessage(message.TenantId, payload), cancellationToken),
-            MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, payload), cancellationToken),
+            MessageChannels.Push => _pushSender.SendAsync(MessagePayload.ToPushMessage(message.TenantId, payload, message.ExpiresAt), cancellationToken),
             MessageChannels.Sms => _smsSender.SendAsync(MessagePayload.ToSmsMessage(message.TenantId, payload), cancellationToken),
             _ => throw new InvalidOperationException($"No sender is registered for channel '{message.Channel}'.")
         };

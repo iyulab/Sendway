@@ -102,6 +102,21 @@ public class MessageOutboxTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Enqueue_SameKeyWithADifferentDeadline_ReportsKeyReused()
+    {
+        // Whole seconds, so the comparison below holds on stores that keep less than full precision.
+        var deadline = new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        await _outbox.EnqueueAsync(Submission(key: "key-1") with { ExpiresAt = deadline });
+
+        var same = await _outbox.EnqueueAsync(Submission(key: "key-1") with { ExpiresAt = deadline });
+        var other = await _outbox.EnqueueAsync(Submission(key: "key-1") with { ExpiresAt = deadline.AddMinutes(1) });
+
+        Assert.Equal(EnqueueOutcome.Replayed, same.Outcome);
+        Assert.Equal(EnqueueOutcome.KeyReused, other.Outcome);
+        Assert.Equal(deadline, (await StoredAsync(same.Record!.Id)).ExpiresAt);
+    }
+
+    [Fact]
     public async Task Enqueue_SameKeyDifferentTenants_AcceptsBoth()
     {
         var first = await _outbox.EnqueueAsync(Submission(key: "shared-key"));

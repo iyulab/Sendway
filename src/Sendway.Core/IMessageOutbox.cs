@@ -18,7 +18,14 @@ public interface IMessageOutbox : IDeliveryQueue<ClaimedMessage>
     string ReadPayload(ClaimedMessage message);
 }
 
-public sealed record MessageSubmission(Guid TenantId, string Channel, string Recipient, string Payload, string? IdempotencyKey = null);
+// ExpiresAt: the caller's deadline, after which the message is worthless and is not sent (null: none).
+public sealed record MessageSubmission(
+    Guid TenantId,
+    string Channel,
+    string Recipient,
+    string Payload,
+    string? IdempotencyKey = null,
+    DateTimeOffset? ExpiresAt = null);
 
 public enum EnqueueOutcome
 {
@@ -45,5 +52,5 @@ public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord? Record
 public sealed record ChannelDeliveryState(string Channel, int Unsendable, TimeSpan? FailingFor);
 
 // The content stays encrypted until the attempt reads it (IMessageOutbox.ReadPayload).
-public sealed record ClaimedMessage(Guid Id, Guid TenantId, string Channel, string ProtectedPayload, int AttemptCount)
+public sealed record ClaimedMessage(Guid Id, Guid TenantId, string Channel, string ProtectedPayload, int AttemptCount, DateTimeOffset? ExpiresAt = null)
     : ClaimedDelivery(Id, TenantId, AttemptCount);

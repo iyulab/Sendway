@@ -7,16 +7,21 @@ namespace Sendway.Core;
 
 public sealed class FcmPushSender : IPushSender
 {
+    // FCM keeps an undelivered message for at most 28 days.
+    private static readonly TimeSpan MaxTimeToLive = TimeSpan.FromDays(28);
+
     private readonly ICredentialStore _credentialStore;
+    private readonly TimeProvider _timeProvider;
 
     // Tenants can each use their own FCM project credential (an override), so caching a single
     // FirebaseApp per process would reuse the first tenant's credential for every later tenant.
     // One Lazy<Task<FirebaseApp>> is cached per tenant and created on that tenant's first send.
     private readonly ConcurrentDictionary<Guid, Lazy<Task<FirebaseApp>>> _apps = new();
 
-    public FcmPushSender(ICredentialStore credentialStore)
+    public FcmPushSender(ICredentialStore credentialStore, TimeProvider? timeProvider = null)
     {
         _credentialStore = credentialStore;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task SendAsync(PushMessage message, CancellationToken cancellationToken = default)
@@ -42,6 +47,22 @@ public sealed class FcmPushSender : IPushSender
             throw;
         }
 
+        var fcmMessage = Build(message, _timeProvider.GetUtcNow());
+
+        try
+        {
+            await FirebaseMessaging.GetMessaging(app).SendAsync(fcmMessage, cancellationToken);
+        }
+        catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode is MessagingErrorCode.Unregistered or MessagingErrorCode.InvalidArgument)
+        {
+            throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
+        }
+    }
+
+    // A message with a deadline tells both platforms to drop it if it is still undelivered then:
+    // Android through the time to live, iOS through the APNs expiration header.
+    internal static Message Build(PushMessage message, DateTimeOffset now)
+    {
         var fcmMessage = new Message
         {
             // Message.Token: FCM is moving to fid, but registration tokens keep working through the
@@ -57,14 +78,23 @@ public sealed class FcmPushSender : IPushSender
             }
         };
 
-        try
+        if (message.ExpiresAt is { } expiresAt)
         {
-            await FirebaseMessaging.GetMessaging(app).SendAsync(fcmMessage, cancellationToken);
+            var left = expiresAt - now;
+            fcmMessage.Android = new AndroidConfig
+            {
+                TimeToLive = left < TimeSpan.Zero ? TimeSpan.Zero : left > MaxTimeToLive ? MaxTimeToLive : left
+            };
+            fcmMessage.Apns = new ApnsConfig
+            {
+                Headers = new Dictionary<string, string>
+                {
+                    ["apns-expiration"] = expiresAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)
+                }
+            };
         }
-        catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode is MessagingErrorCode.Unregistered or MessagingErrorCode.InvalidArgument)
-        {
-            throw new InvalidRecipientException($"FCM rejected the device token: {ex.MessagingErrorCode}", ex);
-        }
+
+        return fcmMessage;
     }
 
     // Called after a tenant's FCM credential is set, replaced or removed, so the cached

@@ -94,7 +94,8 @@ public static class SendEmailEndpoint
                 signal,
                 MessageChannels.Email,
                 BuildRecipientSummary(request.To, cc, bcc),
-                MessagePayload.Serialize(message));
+                MessagePayload.Serialize(message),
+                request.ExpiresAt);
         });
     }
 
