@@ -96,7 +96,15 @@ public static class SendEmailEndpoint
                 BuildRecipientSummary(request.To, cc, bcc),
                 MessagePayload.Serialize(message),
                 request.ExpiresAt);
-        });
+        })
+        .WithName("SendEmail")
+        .WithSummary("Accept an email for delivery")
+        .Produces<SendMessageResponse>(StatusCodes.Status202Accepted)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+        .ProducesProblem(StatusCodes.Status429TooManyRequests);
     }
 
     // MessageRecord.Recipient stays a single string (no response-shape break) — this folds the full

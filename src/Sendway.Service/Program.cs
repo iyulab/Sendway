@@ -85,6 +85,11 @@ builder.Services.AddProblemDetails(options =>
 // the environment is Development.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
+// Numbers are numbers on the wire, in both directions: a quoted number is not read as one, and the
+// API description says integer rather than "integer or string".
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
+
 builder.Services.AddOptions<MessageDeliveryOptions>().BindConfiguration("Sendway:Delivery");
 builder.Services.AddSingleton<MessageDeliverySignal>();
 builder.Services.AddSingleton<MessageDeliveryProcessor>();
@@ -103,9 +108,15 @@ builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<We
 
 // Order matters: the seeder migrates the schema, and the delivery worker must not claim before that.
 builder.Services.AddSendwayHealthChecks();
+builder.Services.AddSendwayOpenApi();
 
-builder.Services.AddHostedService<ChannelCredentialSeeder>();
-builder.Services.AddHostedService<DeliveryWorker>();
+// The build step that writes the OpenAPI description runs this entry point to read the endpoints;
+// it must not migrate a database or start delivering.
+if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
+{
+    builder.Services.AddHostedService<ChannelCredentialSeeder>();
+    builder.Services.AddHostedService<DeliveryWorker>();
+}
 
 var app = builder.Build();
 
@@ -119,7 +130,8 @@ var messages = app.MapGroup("/messages")
     .RequireAuthorization(policy => policy
         .AddAuthenticationSchemes(TenantKeyAuthenticationHandler.SchemeName)
         .RequireAuthenticatedUser())
-    .RequireRateLimiting(TenantRateLimitPolicy.PolicyName);
+    .RequireRateLimiting(TenantRateLimitPolicy.PolicyName)
+    .WithTags("Messages");
 messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapSendSmsEndpoint();
@@ -142,6 +154,9 @@ admin.MapGetUsageEndpoint();
 admin.MapGetAuditEventsEndpoint();
 
 app.MapSendwayHealthChecks();
+
+// The API description is public, like the documentation it mirrors: no key, no tenant data.
+app.MapOpenApi();
 
 app.Run();
 

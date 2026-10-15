@@ -57,6 +57,10 @@ jobs:
       # Warnings fail CI: nothing else would notice them piling up.
       - run: dotnet build Sendway.slnx --configuration Release -p:TreatWarningsAsErrors=true
 
+      # The build rewrites the API description; a contract change must arrive with its description.
+      - name: OpenAPI description is up to date
+        run: git diff --exit-code -- docs/openapi.json
+
       - run: dotnet test Sendway.slnx --configuration Release --no-build
 
       - name: Storage tests against PostgreSQL

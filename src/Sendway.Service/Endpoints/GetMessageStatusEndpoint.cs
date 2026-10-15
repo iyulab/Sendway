@@ -27,6 +27,12 @@ public static class GetMessageStatusEndpoint
                 record.AttemptCount,
                 record.AcceptedAt,
                 record.CompletedAt));
-        });
+        })
+        .WithName("GetMessage")
+        .WithSummary("Read a message's status and, once final, its outcome")
+        .Produces<MessageStatusResponse>()
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status429TooManyRequests);
     }
 }

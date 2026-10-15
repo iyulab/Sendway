@@ -28,6 +28,8 @@
 
 ## 통합 인터페이스
 
+호출하는 서비스가 쓰는 API(아래 «접수»·«상태 조회»·«결과 통지»)는 OpenAPI 3.1로도 기술되어 있습니다 — 실행 중인 서비스의 `GET /openapi/v1.json`(키 없이), 그리고 리포의 [`docs/openapi.json`](openapi.json)(빌드할 때마다 다시 만들어지며, 계약이 바뀌면 이 파일의 변경으로 드러납니다). 결과 웹훅은 그 문서의 `webhooks`에 있습니다. 관리 API는 [운영](operations.md)에 기술합니다. 요청·응답 본문의 숫자는 JSON 숫자여야 합니다(따옴표로 감싼 숫자는 읽지 않습니다).
+
 ### 접수
 
 `POST /messages/email`, `POST /messages/push`, `POST /messages/sms`는 요청을 **접수**하고 바로 응답합니다. 요청을 검증해 데이터베이스에 저장한 뒤 `202 Accepted`와 함께 메시지 ID를 돌려주고(`{"id": ..., "status": "Queued"}`, `Location: /messages/{id}`), 실제 발송은 전달 워커가 뒤이어 수행합니다. 응답 시간은 발송 프로바이더(SMTP·Graph·FCM·SOLAPI)의 응답 시간과 무관하며, 접수된 메시지는 데이터베이스에 있으므로 프로세스가 재시작되어도 사라지지 않습니다.

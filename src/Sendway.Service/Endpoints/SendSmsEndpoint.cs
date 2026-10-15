@@ -39,6 +39,14 @@ public static class SendSmsEndpoint
                 message.To.ToString(),
                 MessagePayload.Serialize(message),
                 request.ExpiresAt);
-        });
+        })
+        .WithName("SendSms")
+        .WithSummary("Accept an SMS for delivery")
+        .Produces<SendMessageResponse>(StatusCodes.Status202Accepted)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+        .ProducesProblem(StatusCodes.Status429TooManyRequests);
     }
 }

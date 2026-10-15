@@ -51,6 +51,14 @@ public static class SendPushEndpoint
                 request.DeviceToken,
                 MessagePayload.Serialize(message),
                 request.ExpiresAt);
-        });
+        })
+        .WithName("SendPush")
+        .WithSummary("Accept an app push notification for delivery")
+        .Produces<SendMessageResponse>(StatusCodes.Status202Accepted)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status409Conflict)
+        .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+        .ProducesProblem(StatusCodes.Status429TooManyRequests);
     }
 }

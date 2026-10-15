@@ -7,7 +7,9 @@ RUN dotnet restore "src/Sendway.Service/Sendway.Service.csproj"
 
 COPY ["src/Sendway.Service/", "src/Sendway.Service/"]
 COPY ["src/Sendway.Core/", "src/Sendway.Core/"]
-RUN dotnet publish "src/Sendway.Service/Sendway.Service.csproj" -c Release -o /app/publish --no-restore
+# The OpenAPI description is a repository file (docs/openapi.json), not part of the image: the
+# running service serves its own at /openapi/v1.json.
+RUN dotnet publish "src/Sendway.Service/Sendway.Service.csproj" -c Release -o /app/publish --no-restore -p:OpenApiGenerateDocumentsOnBuild=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

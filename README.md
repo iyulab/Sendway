@@ -88,6 +88,7 @@ SENDWAY_TEST_POSTGRES="Host=localhost;Username=postgres;Password=postgres" dotne
 - [원칙](docs/principles.md)
 - [범위](docs/scope.md)
 - [아키텍처](docs/architecture.md)
+- [API 기술(OpenAPI 3.1)](docs/openapi.json)
 - [운영](docs/operations.md)
 - [개념](docs/concepts.md)
 - [용어집](docs/glossary.md)
