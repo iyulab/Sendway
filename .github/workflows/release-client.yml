@@ -2,7 +2,8 @@ name: Release client
 
 # Sendway.Client (clients/csharp) to nuget.org, driven only by a `client-v<version>` tag: a push to main never
 # publishes. The tests ran in CI on the tagged commit; this checks that the tag, the project and the changelog
-# agree and that the version is not on nuget.org yet, then packs and pushes.
+# agree and that the version is not on nuget.org yet, packs, and asks the organization's central publish workflow
+# to push the packages (nuget.org Trusted Publishing: no API key lives in this repository).
 
 on:
   push:
@@ -16,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: pack and push
+  pack:
+    name: pack
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -44,7 +45,19 @@ jobs:
 
       - run: dotnet pack "$PROJECT" --configuration Release --output nupkg
 
-      - name: Push to nuget.org
-        run: dotnet nuget push nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY"
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      # Only the packages go into the artifact: the central workflow refuses anything else.
+      - uses: actions/upload-artifact@v5
+        with:
+          name: nuget-packages
+          path: |
+            nupkg/*.nupkg
+            nupkg/*.snupkg
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: publish through the central workflow
+    needs: pack
+    uses: iyulab/nuget-publish/.github/workflows/request.yml@de1e58c8bcefaf88f497fcb58899a1c6e84f4e29 # main
+    permissions: {}
+    secrets: inherit
