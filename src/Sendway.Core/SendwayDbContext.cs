@@ -44,6 +44,10 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
             // Serves the delivery worker's "next due message" lookup.
             message.HasIndex(m => new { m.Status, m.NextAttemptAt });
 
+            // Serves the same lookup in delivery order (MessageRecord.ServeBy), so a long backlog is not sorted
+            // to find the next message.
+            message.HasIndex(m => new { m.Status, m.ServeBy, m.NextAttemptAt });
+
             // Serves the health and statistics reads that look at finished messages by outcome and time:
             // the last message sent on a channel, the failures of the last 24 hours. Kept rows grow
             // without limit, so these must not scan them.

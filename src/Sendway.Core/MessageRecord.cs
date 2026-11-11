@@ -16,6 +16,14 @@ public sealed class MessageRecord : QueuedDelivery
 
     public required DateTimeOffset AcceptedAt { get; init; }
 
+    // The order due messages are delivered in, earliest first (earliest deadline first): the message's own
+    // deadline (ExpiresAt) when it is nearer than a day, else a day after it was accepted. A code that is
+    // worthless in ten minutes therefore goes out before a bulk send accepted earlier, while messages
+    // without a deadline keep first-come, first-served order among themselves — and one that has waited a
+    // day outranks any newer deadline, so nothing waits forever. Rows from before this existed have the
+    // minimum value and so go first, in the order they were due.
+    public DateTimeOffset ServeBy { get; init; }
+
     public string? IdempotencyKey { get; set; }
 
     // Fingerprint of the request the idempotency key was first used with — a later request reusing

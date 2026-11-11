@@ -30,8 +30,18 @@ public sealed class MessageOutbox : IMessageOutbox
         _protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
         _timeProvider = timeProvider;
         _webhookSignal = webhookSignal;
-        _queue = new DeliveryQueue<MessageRecord>(timeProvider);
+        _queue = new DeliveryQueue<MessageRecord>(timeProvider, m => m.ServeBy);
     }
+
+    // The longest a message without a deadline is allowed to be overtaken by messages with one.
+    public static readonly TimeSpan ServeWindow = TimeSpan.FromHours(1) * 24;
+
+    // A deadline only ever moves a message forward: past the window it counts as no deadline at all. A
+    // simulated (sandbox) message gets none — a test tenant must not overtake a real one. The deadline is the
+    // caller's own word, so what bounds one tenant's pull on the queue is its request rate limit and its
+    // daily limit, not this ordering.
+    internal static DateTimeOffset ServeBy(DateTimeOffset acceptedAt, DateTimeOffset? expiresAt) =>
+        expiresAt is { } deadline && deadline < acceptedAt + ServeWindow ? deadline : acceptedAt + ServeWindow;
 
     // How long until a message to this destination may be accepted, or null when it may be now.
     private static async Task<TimeSpan?> DestinationRetryAfterAsync(
@@ -142,6 +152,7 @@ public sealed class MessageOutbox : IMessageOutbox
             TenantId = submission.TenantId,
             Channel = submission.Channel,
             Recipient = submission.Recipient,
+            ServeBy = ServeBy(now, submission.Simulated ? null : submission.ExpiresAt),
             Destination = submission.Destination is { } d ? MessageSubmission.DestinationKey(d) : null,
             Status = DeliveryStatus.Queued,
             AcceptedAt = now,

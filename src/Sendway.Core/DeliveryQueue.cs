@@ -8,10 +8,14 @@ namespace Sendway.Core;
 internal sealed class DeliveryQueue<TEntity> where TEntity : QueuedDelivery
 {
     private readonly TimeProvider _timeProvider;
+    private readonly System.Linq.Expressions.Expression<Func<TEntity, DateTimeOffset>>? _serveBy;
 
-    public DeliveryQueue(TimeProvider timeProvider)
+    // serveBy: when set, due items are claimed in this order (earliest first) and by NextAttemptAt only among
+    // equals; unset, in order of NextAttemptAt (first come, first served).
+    public DeliveryQueue(TimeProvider timeProvider, System.Linq.Expressions.Expression<Func<TEntity, DateTimeOffset>>? serveBy = null)
     {
         _timeProvider = timeProvider;
+        _serveBy = serveBy;
     }
 
     public async Task<TEntity?> ClaimNextAsync(SendwayDbContext db, TimeSpan lease, CancellationToken cancellationToken)
@@ -20,10 +24,13 @@ internal sealed class DeliveryQueue<TEntity> where TEntity : QueuedDelivery
         {
             DateTimeOffset? now = _timeProvider.GetUtcNow();
 
-            var candidate = await db.Set<TEntity>()
+            var due = db.Set<TEntity>()
                 .AsNoTracking()
-                .Where(m => (m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending) && m.NextAttemptAt <= now)
-                .OrderBy(m => m.NextAttemptAt)
+                .Where(m => (m.Status == DeliveryStatus.Queued || m.Status == DeliveryStatus.Sending) && m.NextAttemptAt <= now);
+            var ordered = _serveBy is null
+                ? due.OrderBy(m => m.NextAttemptAt)
+                : due.OrderBy(_serveBy).ThenBy(m => m.NextAttemptAt);
+            var candidate = await ordered
                 .Select(m => new { m.Id, m.AttemptCount })
                 .FirstOrDefaultAsync(cancellationToken);
 
