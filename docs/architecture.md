@@ -60,6 +60,19 @@
 
 기본값은 `Sendway:Limits:*`(`SmsCountries`, `SmsPerDay`, `EmailPerDay`, `PushPerDay`, `SmsPerDestinationPerHour`, `EmailPerDestinationPerHour`, `PushPerDestinationPerHour`, `DestinationCooldown`), 테넌트별 값은 `PUT /admin/tenants/{id}/limits`(`{"smsCountries": ["82", "81"], "smsPerDay": 5000, "destinationPerHour": 10, "destinationCooldownSeconds": 30}` — 빠진 값은 기본값, `destinationPerHour`는 모든 채널에, 쿨다운 0은 «없음»)로 정하고 `GET /admin/tenants`가 적용 중인 값을 보여 줍니다. 분당 요청 수 한도(위)와는 따로 셉니다.
 
+### 인증 코드(Verify)
+
+"이 주소·번호를 쥔 사람이 코드를 입력했는가"만 증명합니다 — 그 사람이 누구의 계정인지, 로그인시킬지는 호출 서비스가 정합니다. 소비앱이 코드 생성·보관·만료·시도 제한·재발송 제한을 다시 짜지 않게 하는 편의 층이라, 이 없이도 일반 발송(`/messages/*`)만으로 직접 구현할 수 있습니다.
+
+- `POST /verifications` — `{channel: "sms"|"email", to, purpose?, ttlSeconds?, codeLength?, maxAttempts?, locale?}`로 코드를 보냅니다. 응답은 `202`와 `{id, expiresAt}`. 코드는 **Sendway가 만들고** 호출 서비스는 보지 못합니다 — 로그·DB 유출 면이 줄어듭니다. 시험 테넌트만 전달되지 않으므로 응답으로 `code`를 받습니다. 문구는 고정(`locale`: `en` 기본, `ko`)이고 템플릿은 받지 않습니다.
+- `POST /verifications/{id}/check` — `{code}`. 항상 `200`이고 `status`로 갈립니다: `verified`(맞음, 코드는 한 번만) · `mismatch`(`attemptsLeft`) · `expired`(시간이 지났거나 이미 썼거나 새 코드로 대체됨) · `too_many_attempts`. 시도 횟수는 코드를 비교하기 **전에** 원자적으로 세므로 병렬 추측도 `maxAttempts`를 넘기지 못합니다. 모르는 `id`와 다른 테넌트의 `id`는 `404`.
+- `GET /verifications/{id}` — 상태(`pending`·`verified`·`expired`·`too_many_attempts`·`superseded`), 남은 시도, 코드를 실은 메시지의 전달 결과(`delivery.status`·`reason`). 목적지와 코드는 싣지 않습니다. 전달 결과를 최종 사용자에게 그대로 보이지 마세요 — 그 번호가 있는지 알려 주게 됩니다.
+- 범위: `ttlSeconds` 30~900(기본 300), `codeLength` 4~8(기본 6), `maxAttempts` 1~10(기본 5), `purpose` 64자까지(불투명 문자열 — 사용자 id 같은 개념은 받지 않습니다). 같은 목적지·`purpose`의 새 코드는 이전 코드를 **새 메시지가 접수된 뒤에만** 무효로 만듭니다 — 거절된 요청이 동작하던 코드를 죽이지 않습니다. 다른 `purpose`의 코드는 섞이지 않습니다.
+- 추측 확률: 한 목적지에서 한 시간에 코드가 맞춰질 확률은 대략 (시간당 시작 수 × 시도 수) ÷ 10^길이입니다. 기본(SMS 시간당 5건, 시도 5회, 6자리)이면 백만분의 25, 4자리면 만분의 25 — 짧은 코드는 호출 서비스의 선택이며 막지 않습니다.
+- 발송은 일반 메시지 경로를 그대로 탑니다: 코드의 만료가 메시지의 `expiresAt`(만료 뒤에는 보내지 않고, 전달 순서에서 먼저 나감), 테넌트의 하루 한도와 목적지 한도, SMS의 허용 국가와 공급자 점검. 같은 목적지로 새 코드를 요청하는 최소 간격은 30초(`Sendway:Verification:ResendInterval`) — **코드 시작만** 셉니다(가입 메일 직후의 코드는 거절되지 않음). 넘으면 `429`·`destination_rate_limited`와 `Retry-After`이고, 이미 보낸 코드는 만료까지 유효합니다.
+- 같은 `Idempotency-Key`로 다시 요청하면 같은 verification(시험 테넌트는 같은 코드)이고, 같은 키에 다른 요청은 `422`입니다.
+- 코드는 Data Protection으로 보호해 저장하고, 맞았거나 대체되었거나 시도가 소진되면 지웁니다. 확인되지 않은 채 만료된 코드의 보호 저장본은 보존 정책과 함께 정리할 일이 남아 있습니다.
+
 ### 오류 응답
 
 오류 응답은 모두 같은 형식([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, `application/problem+json`)입니다. 엔드포인트가 요청을 거절한 경우뿐 아니라, 본문을 읽지 못했거나 경로가 없거나 처리 중 예기치 않게 실패한 경우도 같습니다.
