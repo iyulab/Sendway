@@ -111,6 +111,22 @@ builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<We
 builder.Services.AddSendwayHealthChecks();
 builder.Services.AddSendwayOpenApi();
 
+// One line per request — method, path (no query string), status, duration — in place of the host's two
+// "Request starting/finished" lines. The health endpoints opt out (SendwayHealth), so a quiet service's
+// log is not mostly probes. No headers and no bodies: a key or a message text never reaches the log.
+//
+// The request line is a multi-line message, and a container platform stores every console line as a row of its
+// own: the console is fixed to one line per entry so a request costs one row, not seven.
+builder.Logging.AddSimpleConsole(options => options.SingleLine = true);
+builder.Services.AddHttpLogging(options =>
+{
+    options.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.RequestMethod
+        | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.RequestPath
+        | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.ResponseStatusCode
+        | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.Duration;
+    options.CombineLogs = true;
+});
+
 // The build step that writes the OpenAPI description runs this entry point to read the endpoints;
 // it must not migrate a database or start delivering.
 if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
@@ -121,6 +137,8 @@ if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocumen
 
 var app = builder.Build();
 
+// First, so the duration covers everything below and an error response is logged with its final status.
+app.UseHttpLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();

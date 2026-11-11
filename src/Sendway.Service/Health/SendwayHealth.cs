@@ -25,6 +25,14 @@ public sealed class HealthOptions
     // the default retry delays (5 s, 30 s, 3 min) such a message has failed four times by 5 minutes;
     // a single message stuck on its own recipient does not count once anything else is sent.
     public TimeSpan MaxFailingFor { get; set; } = TimeSpan.FromMinutes(5);
+
+    // How often the service writes its own health to the log (one line, see HealthHeartbeatPublisher).
+    // A log alert reads that line: "no Healthy line for N minutes" catches a dead service, an Unhealthy
+    // or Degraded line a sick one — without an outside prober and without logging every probe request.
+    // Values under MinHeartbeat are raised to it so the checks cannot be run in a tight loop.
+    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    public static readonly TimeSpan MinHeartbeat = TimeSpan.FromSeconds(10);
 }
 
 // Health endpoints without authentication, for probes and external monitoring. They say whether the
@@ -69,18 +77,30 @@ public static class SendwayHealth
                 failureStatus: null,
                 tags: null,
                 timeout: CheckTimeout));
+
+        services.AddOptions<HealthCheckPublisherOptions>()
+            .Configure<IOptions<HealthOptions>>((publisher, health) =>
+                publisher.Period = health.Value.HeartbeatInterval < HealthOptions.MinHeartbeat
+                    ? HealthOptions.MinHeartbeat
+                    : health.Value.HeartbeatInterval);
+        services.AddSingleton<IHealthCheckPublisher, HealthHeartbeatPublisher>();
         return services;
     }
 
     public static void MapSendwayHealthChecks(this IEndpointRouteBuilder app)
     {
+        // None of the three is request-logged: a probe asks every few seconds, and a line per probe is most
+        // of a quiet service's log volume. The heartbeat (HealthHeartbeatPublisher) is the record instead.
+
         // The process is up and answering. For a liveness probe: it never consults the database, so
         // a database outage does not get healthy instances restarted.
-        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false, ResponseWriter = WriteAsync });
+        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false, ResponseWriter = WriteAsync })
+            .WithHttpLogging(Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.None);
 
         // This instance can take requests (the database is reachable). For a readiness probe: a
         // delivery backlog does not stop it accepting, so the backlog is not part of this answer.
-        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains(Ready), ResponseWriter = WriteAsync });
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains(Ready), ResponseWriter = WriteAsync })
+            .WithHttpLogging(Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.None);
 
         // Everything, for external monitoring: anything short of Healthy answers 503, so a monitor
         // that only looks at the status code still alerts on a backlog or on failures.
@@ -93,7 +113,7 @@ public static class SendwayHealth
                 [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
                 [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
             }
-        });
+        }).WithHttpLogging(Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.None);
     }
 
     private static Task WriteAsync(HttpContext context, HealthReport report)
@@ -111,6 +131,26 @@ public static class SendwayHealth
                 })
         };
         return context.Response.WriteAsync(JsonSerializer.Serialize(body, JsonSerializerOptions.Web));
+    }
+}
+
+// The service's own record of how it is doing: one log line per HealthOptions.HeartbeatInterval, the same
+// checks /health runs, so a log alert needs no outside prober and no request log. The line is
+// "Sendway health <Status>: <check>=<Status> …" at Information when Healthy, Warning when Degraded, Error
+// when Unhealthy. Statuses and check names only — never a description, a tenant or an exception text.
+public sealed class HealthHeartbeatPublisher(ILogger<HealthHeartbeatPublisher> logger) : IHealthCheckPublisher
+{
+    public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
+    {
+        var level = report.Status switch
+        {
+            HealthStatus.Healthy => LogLevel.Information,
+            HealthStatus.Degraded => LogLevel.Warning,
+            _ => LogLevel.Error
+        };
+        var checks = string.Join(' ', report.Entries.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => $"{e.Key}={e.Value.Status}"));
+        logger.Log(level, "Sendway health {Status}: {Checks}", report.Status, checks);
+        return Task.CompletedTask;
     }
 }
 

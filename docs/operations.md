@@ -44,6 +44,7 @@ docker run -d --name sendway -p 8080:8080 \
 | `Sendway:Health:MaxOldestDue` | `00:05:00` | 가져갈 수 있는 항목이 이보다 오래 기다리면 `/health`가 `Unhealthy` |
 | `Sendway:Health:MaxFailedInLast24Hours` | 없음 | 정하면, 최근 24시간 실패가 이를 넘을 때 `/health`가 `Degraded`(없으면 실패 수는 보여 주기만 함) |
 | `Sendway:Health:MaxFailingFor` | `00:05:00` | 한 채널에서 마지막 성공 뒤 접수된 메시지들이 실패만 하며 이보다 오래 기다리면 `/health`가 `Degraded` |
+| `Sendway:Health:HeartbeatInterval` | `00:01:00` | 서비스가 자기 상태를 로그에 한 줄 남기는 간격(아래 「상태 하트비트」). 10초보다 짧게 정해도 10초 |
 
 ### 여러 인스턴스
 
@@ -66,6 +67,16 @@ docker run -d --name sendway -p 8080:8080 \
 | `/health/live` | 프로세스가 응답하는지만(데이터베이스를 보지 않음) | 생존(liveness) 프로브 — 데이터베이스 장애로 멀쩡한 인스턴스가 재시작되지 않게 |
 | `/health/ready` | 데이터베이스에 닿는지 | 준비(readiness) 프로브 — 요청을 받을 수 있는지. 발송이 밀려도 접수는 계속되므로 대기열은 보지 않음 |
 | `/health` | 데이터베이스 + 메시지·웹훅 대기열 + 채널 자격증명 | 외부 감시(업타임 모니터 등)와 경보 — `Healthy`가 아니면 `503` |
+
+### 상태 하트비트와 요청 로그
+
+세 경로는 요청 로그에 남지 않습니다 — 프로브는 몇 초마다 오고, 한 줄씩 남기면 조용한 서비스의 로그 대부분이 프로브입니다. 대신 서비스가 `/health`와 같은 검사를 `Sendway:Health:HeartbeatInterval`마다 직접 돌려 한 줄을 남깁니다.
+
+```
+Sendway health Healthy: channels=Healthy database=Healthy messages=Healthy webhooks=Healthy
+```
+
+`Healthy`는 정보, `Degraded`는 경고, `Unhealthy`는 오류 수준입니다. 검사 이름과 상태만 담고, 설명이나 예외 문구(연결 문자열이 담길 수 있음)는 넣지 않습니다. 외부 프로버가 없어도 로그 경보로 감시할 수 있습니다 — **간격의 몇 배(예: 15분) 동안 `Healthy` 줄이 없으면** 서비스가 죽었거나 로그가 끊긴 것이고, **`Unhealthy`·`Degraded` 줄이 있으면** 아픈 것입니다. 이 줄은 프로브 경로가 막혀 있는 곳(외부에서 닿지 않는 설치)에서도 같은 신호를 줍니다. 프로브 줄이 빠진 자리에는 그 밖의 모든 요청이 한 줄씩 남습니다 — 메서드, 경로(쿼리 문자열 없음), 상태 코드, 걸린 시간만이며 헤더와 본문은 로그에 닿지 않습니다 (`Microsoft.AspNetCore.HttpLogging.HttpLoggingMiddleware`, 정보 수준). 호스트가 요청마다 남기던 `Request starting`·`Request finished` 두 줄은 기본 설정에서 경고 수준으로 올려 껐습니다 (`Logging:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics`).
 
 ```bash
 curl http://localhost:8080/health
