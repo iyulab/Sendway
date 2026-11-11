@@ -9,6 +9,11 @@ public sealed class MessageRecord : QueuedDelivery
 
     public required string Recipient { get; init; }
 
+    // The key the per-destination limit counts by: the recipient normalized (an email address in lower case,
+    // an SMS number in E.164, a device token as is; one too long for the column, its SHA-256). Null when the
+    // message has no single destination to count — an email to several recipients.
+    public string? Destination { get; init; }
+
     public required DateTimeOffset AcceptedAt { get; init; }
 
     public string? IdempotencyKey { get; set; }

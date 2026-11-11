@@ -37,6 +37,7 @@ public static class SendwayOpenApi
         ApiProblem.RateLimited,
         ApiProblem.DestinationNotAllowed,
         ApiProblem.DailyLimitReached,
+        ApiProblem.DestinationRateLimited,
         ApiProblem.Unauthorized,
         ApiProblem.NotFound,
         ApiProblem.InternalError

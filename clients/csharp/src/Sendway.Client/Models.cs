@@ -145,6 +145,7 @@ internal static class Names
         "rate_limited" => SendwayErrorCode.RateLimited,
         "destination_not_allowed" => SendwayErrorCode.DestinationNotAllowed,
         "daily_limit_reached" => SendwayErrorCode.DailyLimitReached,
+        "destination_rate_limited" => SendwayErrorCode.DestinationRateLimited,
         "unauthorized" => SendwayErrorCode.Unauthorized,
         "not_found" => SendwayErrorCode.NotFound,
         "internal_error" => SendwayErrorCode.InternalError,

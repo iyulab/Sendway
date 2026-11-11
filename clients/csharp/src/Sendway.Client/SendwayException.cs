@@ -68,6 +68,11 @@ public enum SendwayErrorCode
     /// was stored; retry after <see cref="SendwayException.RetryAfter"/>.</summary>
     DailyLimitReached,
 
+    /// <summary>429 — this service sent to this destination (address, number or device) too recently or too often. Nothing
+    /// was stored and other destinations are not affected; retry after <see cref="SendwayException.RetryAfter"/> — not
+    /// before, or the message is refused again.</summary>
+    DestinationRateLimited,
+
     /// <summary>401 — the API key is missing or not valid.</summary>
     Unauthorized,
 

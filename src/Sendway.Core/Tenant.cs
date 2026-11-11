@@ -31,6 +31,13 @@ public sealed class Tenant
 
     public int? PushPerDay { get; set; }
 
+    // Messages to one destination per rolling hour (all channels), and the least seconds between two
+    // messages to the same destination; null means the deployment's default (a 0 seconds cooldown is
+    // "none", whatever the default says).
+    public int? DestinationPerHour { get; set; }
+
+    public int? DestinationCooldownSeconds { get; set; }
+
     public required DateTimeOffset CreatedAt { get; init; }
 
     // When the previous key stops working, or null when it no longer works at `now`.

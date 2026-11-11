@@ -50,7 +50,8 @@ public static class SendPushEndpoint
                 MessageChannels.Push,
                 request.DeviceToken,
                 MessagePayload.Serialize(message),
-                request.ExpiresAt);
+                request.ExpiresAt,
+                destination: request.DeviceToken);
         })
         .WithName("SendPush")
         .WithSummary("Accept an app push notification for delivery")

@@ -93,6 +93,10 @@ namespace Sendway.Core.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Destination")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
                     b.Property<string>("Error")
                         .HasColumnType("text");
 
@@ -145,6 +149,8 @@ namespace Sendway.Core.Migrations
 
                     b.HasIndex("TenantId", "Channel", "AcceptedAt");
 
+                    b.HasIndex("TenantId", "Channel", "Destination", "AcceptedAt");
+
                     b.ToTable("MessageRecords");
                 });
 
@@ -163,6 +169,12 @@ namespace Sendway.Core.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DestinationCooldownSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DestinationPerHour")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("EmailPerDay")
                         .HasColumnType("integer");

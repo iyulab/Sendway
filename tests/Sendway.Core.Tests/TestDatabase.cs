@@ -15,6 +15,7 @@ internal sealed class TestDatabase : IDisposable
     public const string PostgresVariable = "SENDWAY_TEST_POSTGRES";
 
     private readonly string? _sqlitePath;
+    private readonly Action<DbContextOptionsBuilder<SendwayDbContext>> _configure;
 
     public IDbContextFactory<SendwayDbContext> Factory { get; }
 
@@ -22,11 +23,13 @@ internal sealed class TestDatabase : IDisposable
     {
         var builder = new DbContextOptionsBuilder<SendwayDbContext>();
         var postgresServer = Environment.GetEnvironmentVariable(PostgresVariable);
+        Action<DbContextOptionsBuilder<SendwayDbContext>> configure;
 
         if (string.IsNullOrWhiteSpace(postgresServer))
         {
             _sqlitePath = Path.Combine(Path.GetTempPath(), "sendway-core-tests-" + Guid.NewGuid().ToString("N") + ".db");
-            builder.UseSqlite($"Data Source={_sqlitePath}");
+            var path = _sqlitePath;
+            configure = b => b.UseSqlite($"Data Source={path}");
         }
         else
         {
@@ -34,10 +37,22 @@ internal sealed class TestDatabase : IDisposable
             {
                 Database = "sendway_test_" + Guid.NewGuid().ToString("N")
             };
-            builder.UseNpgsql(connectionString.ConnectionString);
+            configure = b => b.UseNpgsql(connectionString.ConnectionString);
         }
 
+        _configure = configure;
+        configure(builder);
         Factory = new PooledDbContextFactory<SendwayDbContext>(builder.Options);
+    }
+
+    // A second factory onto the same database with interceptors added — to slow a save down and so make
+    // two requests overlap, which a fast local database would otherwise hide.
+    public IDbContextFactory<SendwayDbContext> FactoryWith(params Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[] interceptors)
+    {
+        var builder = new DbContextOptionsBuilder<SendwayDbContext>();
+        _configure(builder);
+        builder.AddInterceptors(interceptors);
+        return new PooledDbContextFactory<SendwayDbContext>(builder.Options);
     }
 
     public async Task CreateAsync()

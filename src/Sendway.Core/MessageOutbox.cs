@@ -33,7 +33,66 @@ public sealed class MessageOutbox : IMessageOutbox
         _queue = new DeliveryQueue<MessageRecord>(timeProvider);
     }
 
+    // How long until a message to this destination may be accepted, or null when it may be now.
+    private static async Task<TimeSpan?> DestinationRetryAfterAsync(
+        SendwayDbContext db, MessageSubmission submission, string destination, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        destination = MessageSubmission.DestinationKey(destination);
+        var wait = TimeSpan.Zero;
+        var since = now - TenantLimits.DestinationWindow;
+        var recent = db.MessageRecords.Where(m =>
+            m.TenantId == submission.TenantId && m.Channel == submission.Channel && m.Destination == destination && m.AcceptedAt > since);
+
+        if (submission.DestinationCooldown is { } cooldown)
+        {
+            // Its own look-back: a cooldown can be longer than the hour the count above looks at.
+            var cooldownSince = now - cooldown;
+            var latest = await db.MessageRecords
+                .Where(m => m.TenantId == submission.TenantId && m.Channel == submission.Channel && m.Destination == destination && m.AcceptedAt > cooldownSince)
+                .MaxAsync(m => (DateTimeOffset?)m.AcceptedAt, cancellationToken);
+            if (latest is { } last && last + cooldown > now)
+            {
+                wait = last + cooldown - now;
+            }
+        }
+
+        if (submission.DestinationPerHour is { } perHour && await recent.CountAsync(cancellationToken) >= perHour)
+        {
+            // With a limit of 0 nothing may be sent: there is no oldest message to wait out, so wait the window.
+            var oldest = await recent.MinAsync(m => (DateTimeOffset?)m.AcceptedAt, cancellationToken);
+            var untilFree = oldest is { } first ? first + TenantLimits.DestinationWindow - now : TenantLimits.DestinationWindow;
+            wait = untilFree > wait ? untilFree : wait;
+        }
+
+        return wait > TimeSpan.Zero ? wait : null;
+    }
+
+    // Count-then-insert is not atomic, so two requests to one destination at the same moment could both pass
+    // the check. The check and the insert for one (tenant, channel, destination) therefore run one at a time
+    // in this process. Across several instances a few concurrent requests can still pass together: the
+    // tenant's request rate limit bounds how many, and the limit is a guard against piling up, not a ledger.
+    private static readonly SemaphoreSlim[] DestinationGates = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
     public async Task<EnqueueResult> EnqueueAsync(MessageSubmission submission, CancellationToken cancellationToken = default)
+    {
+        if (submission.Destination is null || (submission.DestinationCooldown is null && submission.DestinationPerHour is null))
+        {
+            return await EnqueueUnguardedAsync(submission, cancellationToken);
+        }
+
+        var gate = DestinationGates[(int)((uint)HashCode.Combine(submission.TenantId, submission.Channel, submission.Destination) % DestinationGates.Length)];
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await EnqueueUnguardedAsync(submission, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<EnqueueResult> EnqueueUnguardedAsync(MessageSubmission submission, CancellationToken cancellationToken)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -65,12 +124,25 @@ public sealed class MessageOutbox : IMessageOutbox
             }
         }
 
+        // Also after the replay lookup. Counts what was accepted, not what was delivered: a message that
+        // failed still reached the provider and the person, so it still counts.
+        if (submission.Destination is { } destination &&
+            (submission.DestinationCooldown is not null || submission.DestinationPerHour is not null))
+        {
+            var retryAfter = await DestinationRetryAfterAsync(db, submission, destination, now, cancellationToken);
+            if (retryAfter is { } wait)
+            {
+                return new EnqueueResult(EnqueueOutcome.DestinationLimited, null, wait);
+            }
+        }
+
         var record = new MessageRecord
         {
             Id = Guid.NewGuid(),
             TenantId = submission.TenantId,
             Channel = submission.Channel,
             Recipient = submission.Recipient,
+            Destination = submission.Destination is { } d ? MessageSubmission.DestinationKey(d) : null,
             Status = DeliveryStatus.Queued,
             AcceptedAt = now,
             NextAttemptAt = now,

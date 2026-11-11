@@ -60,7 +60,9 @@ public sealed class TenantStore : ITenantStore
         return tenants.OrderBy(t => t.CreatedAt).ToList();
     }
 
-    public async Task<bool> SetLimitsAsync(Guid id, string? smsCountries, int? smsPerDay, int? emailPerDay, int? pushPerDay, CancellationToken cancellationToken = default)
+    public async Task<bool> SetLimitsAsync(
+        Guid id, string? smsCountries, int? smsPerDay, int? emailPerDay, int? pushPerDay,
+        int? destinationPerHour, int? destinationCooldownSeconds, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -74,6 +76,8 @@ public sealed class TenantStore : ITenantStore
         tenant.SmsPerDay = smsPerDay;
         tenant.EmailPerDay = emailPerDay;
         tenant.PushPerDay = pushPerDay;
+        tenant.DestinationPerHour = destinationPerHour;
+        tenant.DestinationCooldownSeconds = destinationCooldownSeconds;
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

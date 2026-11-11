@@ -52,12 +52,13 @@
 
 ### 발송 한도
 
-호출 서비스의 버그나 오용이 프로바이더 요금으로 번지지 않게 테넌트마다 두 가지 한도가 있습니다.
+호출 서비스의 버그나 오용이 프로바이더 요금으로 번지지 않게, 그리고 한 수신자에게 메시지가 쌓이지 않게 테넌트마다 한도가 있습니다.
 
 - **SMS 허용 국가**: 기본은 한국(`82`)만입니다. 그 밖의 번호는 접수 단계에서 `400`·`destination_not_allowed`. 해외 발송은 결정이 필요한 일이라 기본으로 열지 않습니다.
 - **채널별 하루 건수**: 직전 24시간 동안 접수된 메시지 수입니다. 기본은 SMS 1,000건, 이메일·푸시는 제한 없음. 넘으면 저장하지 않고 `429`·`daily_limit_reached`, `Retry-After`는 가장 오래된 메시지가 창을 벗어나는 때까지입니다. 같은 `Idempotency-Key`의 재요청은 새 메시지가 아니므로 한도와 무관하게 원래 응답을 받습니다.
+- **수신자(목적지)당 빈도**: 같은 주소·번호·기기로 한 테넌트가 보낸 메시지 수입니다 — 테넌트의 총량이 아니라 한 수신자에게 쌓이는 양(인증 코드를 열 번 요청, 가입 양식으로 메일함 폭격, 호출 쪽 재시도 루프)을 막습니다. 직전 한 시간 동안 접수된 수가 한도에 닿으면 저장하지 않고 `429`·`destination_rate_limited`(`rate_limited`·`daily_limit_reached`와 다른 코드, **다른 수신자는 영향 없음**), `Retry-After`는 다음 메시지를 받을 수 있는 때까지입니다. 기본 한도는 SMS 5건, 이메일 30건, 푸시 60건이고, **최소 간격(쿨다운)은 기본이 없습니다** — 가입 메일과 환영 메일처럼 몇 초 안에 정당하게 이어 보내는 호출자가 있어서, 인증 코드 재전송처럼 필요한 테넌트가 정합니다. 세는 것은 접수된 메시지이고 결과(`Sent`·`Failed`)와 무관합니다. 이메일은 받는 주소가 **하나로 모이는** 메시지(to 한 명뿐이거나, to·cc·bcc에 어떻게 적었든 같은 주소 하나)만 세며, 주소는 쓴 모양이 아니라 가리키는 메일함으로 셉니다(`Name <a@x.com>`, 대소문자, 국제화 도메인의 유니코드·퓨니코드 표기는 하나) — `+태그`나 Gmail의 점 같은 공급자별 별칭은 합치지 않습니다(그 규칙은 공급자의 것). 수신자가 여럿인 메일은 한 목적지가 아니라서 세지 않습니다. 같은 `Idempotency-Key`의 재요청은 새 메시지가 아니므로 무관하고, 시험 테넌트도 같은 규칙을 받습니다. 같은 수신자로 가는 동시 요청은 한 인스턴스 안에서는 차례로 검사하지만, **인스턴스가 여럿이면** 동시에 도착한 몇 건이 한도를 함께 통과할 수 있습니다(테넌트의 요청 속도 제한이 그 수를 묶습니다) — 한도는 쌓임을 막는 장치이지 장부가 아닙니다.
 
-기본값은 `Sendway:Limits:*`(`SmsCountries`, `SmsPerDay`, `EmailPerDay`, `PushPerDay`), 테넌트별 값은 `PUT /admin/tenants/{id}/limits`(`{"smsCountries": ["82", "81"], "smsPerDay": 5000}` — 빠진 값은 기본값)로 정하고 `GET /admin/tenants`가 적용 중인 값을 보여 줍니다. 분당 요청 수 한도(위)와는 따로 셉니다.
+기본값은 `Sendway:Limits:*`(`SmsCountries`, `SmsPerDay`, `EmailPerDay`, `PushPerDay`, `SmsPerDestinationPerHour`, `EmailPerDestinationPerHour`, `PushPerDestinationPerHour`, `DestinationCooldown`), 테넌트별 값은 `PUT /admin/tenants/{id}/limits`(`{"smsCountries": ["82", "81"], "smsPerDay": 5000, "destinationPerHour": 10, "destinationCooldownSeconds": 30}` — 빠진 값은 기본값, `destinationPerHour`는 모든 채널에, 쿨다운 0은 «없음»)로 정하고 `GET /admin/tenants`가 적용 중인 값을 보여 줍니다. 분당 요청 수 한도(위)와는 따로 셉니다.
 
 ### 오류 응답
 
@@ -81,6 +82,7 @@
 | `rate_limited` | 429 | 테넌트의 요청 한도 초과. `Retry-After` 헤더만큼 기다린 뒤 재시도 |
 | `destination_not_allowed` | 400 | 이 테넌트가 그 나라로 SMS를 보낼 수 없음(«발송 한도»). 관리자가 허용해야 함 |
 | `daily_limit_reached` | 429 | 이 채널의 하루 한도에 닿음, 저장하지 않음. `Retry-After` 뒤에 재시도하거나 관리자가 한도를 올림 |
+| `destination_rate_limited` | 429 | 이 수신자(주소·번호·기기)에게 너무 최근에 또는 너무 자주 보냄, 저장하지 않음, 다른 수신자는 무관. `Retry-After` 전에 다시 보내면 또 거절됨 |
 | `internal_error` | 500 | 서비스 쪽 실패. 요청이 접수됐는지 알 수 없으므로 같은 `Idempotency-Key`로 다시 보내면 안전 |
 
 `code`가 없는 오류 응답은 Sendway가 아니라 그 앞의 프록시나 게이트웨이가 낸 것입니다(요청이 `Accept` 헤더로 JSON을 받지 않겠다고 한 경우는 예외로, 이때는 상태 코드만 의미가 있습니다).

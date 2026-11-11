@@ -13,7 +13,9 @@ public interface ITenantStore
     Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken = default);
 
     // Replaces the tenant's own limits; a null value falls back to the deployment's default.
-    Task<bool> SetLimitsAsync(Guid id, string? smsCountries, int? smsPerDay, int? emailPerDay, int? pushPerDay, CancellationToken cancellationToken = default);
+    Task<bool> SetLimitsAsync(
+        Guid id, string? smsCountries, int? smsPerDay, int? emailPerDay, int? pushPerDay,
+        int? destinationPerHour, int? destinationCooldownSeconds, CancellationToken cancellationToken = default);
 
     Task<bool> SetActiveAsync(Guid id, bool active, CancellationToken cancellationToken = default);
 

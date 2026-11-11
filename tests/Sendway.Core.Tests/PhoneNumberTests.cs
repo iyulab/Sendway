@@ -29,6 +29,12 @@ public class PhoneNumberTests
     [InlineData("+82123")]
     [InlineData("+8210123456789012")]
     [InlineData("")]
+    // A trailing line break used to pass ($ matches before it) and made one number two destinations.
+    [InlineData("+821012345678\n")]
+    [InlineData("+821012345678\r\n")]
+    [InlineData("+821012345678 ")]
+    // Korea's trunk 0 does not belong after +82.
+    [InlineData("+8201012345678")]
     public void Parse_WhenNotInE164Form_Throws(string value)
     {
         Assert.Throws<InvalidRecipientException>(() => PhoneNumber.Parse(value));

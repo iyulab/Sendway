@@ -20,7 +20,8 @@ public static class MessageAcceptance
         string channel,
         string recipient,
         string payload,
-        DateTimeOffset? expiresAt = null)
+        DateTimeOffset? expiresAt = null,
+        string? destination = null)
     {
         // A deadline already behind us would only produce a message that is never sent.
         if (expiresAt is { } deadline &&
@@ -46,7 +47,18 @@ public static class MessageAcceptance
         // whether the message was accepted.
         var limits = httpContext.RequestServices.GetRequiredService<IOptions<TenantLimitOptions>>().Value;
         var result = await outbox.EnqueueAsync(new MessageSubmission(
-            tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt, tenant.Sandbox, TenantLimits.PerDay(tenant, channel, limits)));
+            tenant.Id, channel, recipient, payload, idempotencyKey, expiresAt, tenant.Sandbox, TenantLimits.PerDay(tenant, channel, limits),
+            destination, TenantLimits.PerDestinationPerHour(tenant, channel, limits), TenantLimits.DestinationCooldown(tenant, limits)));
+
+        if (result.Outcome == EnqueueOutcome.DestinationLimited)
+        {
+            httpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return ApiProblem.Create(
+                StatusCodes.Status429TooManyRequests,
+                ApiProblem.DestinationRateLimited,
+                $"This service sent to this '{channel}' destination too recently or too often. Nothing was stored; other destinations are not affected. " +
+                "Try again after Retry-After, or ask an administrator to change the limit.");
+        }
 
         if (result.Outcome == EnqueueOutcome.DailyLimitReached)
         {

@@ -469,6 +469,7 @@
               "rate_limited",
               "destination_not_allowed",
               "daily_limit_reached",
+              "destination_rate_limited",
               "unauthorized",
               "not_found",
               "internal_error"

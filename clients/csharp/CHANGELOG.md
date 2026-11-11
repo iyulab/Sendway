@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `SendwayErrorCode.DestinationRateLimited`: the service held back a message because the same address, number or
+  device was sent to too recently or too often (HTTP 429 with `Retry-After`; other destinations are unaffected).
+
 ## 0.1.0 — 2026-10-15
 
 - `SendwayClient`: send email, SMS and app push (with an optional `Idempotency-Key` and `ExpiresAt`), and read a

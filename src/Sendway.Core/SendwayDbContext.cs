@@ -34,6 +34,7 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
             message.Property(m => m.IdempotencyKey).HasMaxLength(255);
             message.Property(m => m.RequestHash).HasMaxLength(64);
             message.Property(m => m.FailureReason).HasMaxLength(64);
+            message.Property(m => m.Destination).HasMaxLength(MessageSubmission.MaxDestinationLength);
 
             // What makes an idempotency key a reservation rather than a cache entry: a second
             // insert with the same tenant and key fails, even while the first message is still in
@@ -50,6 +51,9 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
             // Serves the per-tenant daily limit: a tenant's messages on a channel in the last 24 hours.
             message.HasIndex(m => new { m.TenantId, m.Channel, m.AcceptedAt });
+
+            // Serves the per-destination limit: one tenant's recent messages to one destination.
+            message.HasIndex(m => new { m.TenantId, m.Channel, m.Destination, m.AcceptedAt });
         });
 
         modelBuilder.Entity<Tenant>(tenant =>

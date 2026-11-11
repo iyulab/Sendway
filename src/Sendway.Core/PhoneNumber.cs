@@ -35,11 +35,21 @@ public sealed partial record PhoneNumber
 
         var digits = value[1..];
         var length = digits[0] is '1' or '7' ? 1 : TwoDigitCountryCodes.Contains(digits[..2]) ? 2 : 3;
-        return new PhoneNumber(digits[..length], digits[length..]);
+        var national = digits[length..];
+
+        // Korea's national numbers never begin with 0 once the country code is there; written with it
+        // ("+82 010…") the number is not the one meant, and would count as a different destination.
+        if (digits[..length] == "82" && national.StartsWith('0'))
+        {
+            throw new InvalidRecipientException(
+                $"'{value}' is not a phone number in E.164 form (drop the leading 0 after +82).");
+        }
+
+        return new PhoneNumber(digits[..length], national);
     }
 
     public override string ToString() => $"+{CountryCode}{NationalNumber}";
 
-    [GeneratedRegex(@"^\+[1-9][0-9]{6,14}$")]
+    [GeneratedRegex(@"\A\+[1-9][0-9]{6,14}\z")]
     private static partial Regex E164();
 }

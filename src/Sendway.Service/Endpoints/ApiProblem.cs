@@ -34,6 +34,11 @@ public static class ApiProblem
     // Retry-After header.
     public const string DailyLimitReached = "daily_limit_reached";
 
+    // The tenant sent to this destination too recently or too often (its cooldown or per-hour limit);
+    // see the Retry-After header. Unlike rate_limited (the tenant's request rate) and daily_limit_reached
+    // (the tenant's volume), only this one destination is held back — other destinations are unaffected.
+    public const string DestinationRateLimited = "destination_rate_limited";
+
     // The API key is missing, unknown or belongs to a deactivated tenant.
     public const string Unauthorized = "unauthorized";
 

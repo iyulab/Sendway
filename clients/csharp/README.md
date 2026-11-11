@@ -65,8 +65,8 @@ matching `FailureReason`; anything else is `Sent`. Point a development environme
 
 A refused call throws `SendwayException` with the HTTP `Status`, a `Code` to branch on (`InvalidRequest`,
 `InvalidRecipient`, `IdempotencyKeyReused`, `ChannelNotConfigured`, `RateLimited`, `DestinationNotAllowed`,
-`DailyLimitReached`, `Unauthorized`, `NotFound`, `InternalError`) and, when rate limited or over the daily limit,
-`RetryAfter`.
+`DailyLimitReached`, `DestinationRateLimited`, `Unauthorized`, `NotFound`, `InternalError`) and, when rate limited,
+over the daily limit or holding back one destination, `RetryAfter`.
 
 ## Webhooks
 

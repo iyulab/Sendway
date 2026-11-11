@@ -95,7 +95,10 @@ public static class SendEmailEndpoint
                 MessageChannels.Email,
                 BuildRecipientSummary(request.To, cc, bcc),
                 MessagePayload.Serialize(message),
-                request.ExpiresAt);
+                request.ExpiresAt,
+                // Counted only for a message whose recipients, written however and in whichever of to, cc and bcc,
+                // come to one address: with several different recipients there is no single destination.
+                destination: SingleDestination(request.To, cc, bcc));
         })
         .WithName("SendEmail")
         .WithSummary("Accept an email for delivery")
@@ -105,6 +108,12 @@ public static class SendEmailEndpoint
         .ProducesProblem(StatusCodes.Status409Conflict)
         .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
         .ProducesProblem(StatusCodes.Status429TooManyRequests);
+    }
+
+    private static string? SingleDestination(IEnumerable<string> to, IEnumerable<string> cc, IEnumerable<string> bcc)
+    {
+        var keys = to.Concat(cc).Concat(bcc).Select(EmailDestination.Key).Distinct(StringComparer.Ordinal).Take(2).ToList();
+        return keys.Count == 1 ? keys[0] : null;
     }
 
     // MessageRecord.Recipient stays a single string (no response-shape break) — this folds the full

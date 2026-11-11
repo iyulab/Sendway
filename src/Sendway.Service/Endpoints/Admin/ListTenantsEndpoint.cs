@@ -16,7 +16,12 @@ public static class ListTenantsEndpoint
                 TenantLimits.SmsCountries(t, limits.Value),
                 TenantLimits.PerDay(t, MessageChannels.Sms, limits.Value),
                 TenantLimits.PerDay(t, MessageChannels.Email, limits.Value),
-                TenantLimits.PerDay(t, MessageChannels.Push, limits.Value))));
+                TenantLimits.PerDay(t, MessageChannels.Push, limits.Value),
+                new DestinationLimitsResponse(
+                    TenantLimits.PerDestinationPerHour(t, MessageChannels.Sms, limits.Value),
+                    TenantLimits.PerDestinationPerHour(t, MessageChannels.Email, limits.Value),
+                    TenantLimits.PerDestinationPerHour(t, MessageChannels.Push, limits.Value),
+                    (int?)TenantLimits.DestinationCooldown(t, limits.Value)?.TotalSeconds))));
         });
     }
 }

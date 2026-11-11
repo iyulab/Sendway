@@ -31,7 +31,21 @@ public sealed record MessageSubmission(
     string? IdempotencyKey = null,
     DateTimeOffset? ExpiresAt = null,
     bool Simulated = false,
-    int? PerDay = null);
+    int? PerDay = null,
+    string? Destination = null,
+    int? DestinationPerHour = null,
+    TimeSpan? DestinationCooldown = null)
+{
+    // The widest destination the limit's column holds; a longer one is not counted.
+    public const int MaxDestinationLength = 512;
+
+    // The key a destination is stored and counted by: itself, or for one too long for the column a SHA-256 of
+    // it — a long destination is limited like any other, not skipped.
+    public static string DestinationKey(string destination) =>
+        destination.Length <= MaxDestinationLength
+            ? destination
+            : "sha256:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(destination))).ToLowerInvariant();
+}
 
 public enum EnqueueOutcome
 {
@@ -49,7 +63,11 @@ public enum EnqueueOutcome
 
     // The tenant already had PerDay messages accepted on the channel in the last 24 hours. Nothing was
     // stored; RetryAfter is when the oldest of them leaves the window.
-    DailyLimitReached
+    DailyLimitReached,
+
+    // The tenant sent to this destination too recently or too often (its cooldown, or its per-hour
+    // limit). Nothing was stored; RetryAfter is when the next message to it may be accepted.
+    DestinationLimited
 }
 
 public sealed record EnqueueResult(EnqueueOutcome Outcome, MessageRecord? Record, TimeSpan? RetryAfter = null);

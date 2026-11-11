@@ -48,7 +48,8 @@ public static class SendSmsEndpoint
                 MessageChannels.Sms,
                 message.To.ToString(),
                 MessagePayload.Serialize(message),
-                request.ExpiresAt);
+                request.ExpiresAt,
+                destination: message.To.ToString());
         })
         .WithName("SendSms")
         .WithSummary("Accept an SMS for delivery")

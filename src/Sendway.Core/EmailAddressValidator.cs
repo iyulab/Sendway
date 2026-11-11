@@ -5,6 +5,16 @@ namespace Sendway.Core;
 // Shared by SmtpEmailSender and GraphEmailSender so a malformed address is rejected identically
 // (InvalidRecipientException, before any network call) regardless of which channel a tenant is
 // configured for.
+// The key a per-destination limit counts an email address by: the mailbox the address names, not how it was
+// written — "Name <a@x.com>", "A@X.COM" and an internationalized domain in Unicode or in punycode are one
+// destination. Provider-specific aliases (a "+tag", dots in a Gmail address) are not folded: that is the
+// provider's rule, not ours to guess.
+public static class EmailDestination
+{
+    public static string Key(string address) =>
+        EmailAddressValidator.Validate(address).GetAddress(true).ToLowerInvariant();
+}
+
 internal static class EmailAddressValidator
 {
     public static MailboxAddress Validate(string address)
