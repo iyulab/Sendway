@@ -59,6 +59,58 @@ public sealed class SendwayClient
         return await ReadAsync(response, ClientJsonContext.Default.Message, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a verification code to an address or number. Sendway makes the code and the wording; check what the person
+    /// enters with <see cref="CheckVerificationAsync"/>. Asking again for the same destination within a short interval is
+    /// refused (<see cref="SendwayErrorCode.DestinationRateLimited"/>, with <see cref="SendwayException.RetryAfter"/>);
+    /// the code already sent keeps working.
+    /// </summary>
+    /// <param name="idempotencyKey">Recommended: a repeat with the same key and request answers with the original verification.</param>
+    public async Task<StartedVerification> StartVerificationAsync(
+        VerificationRequest request, string? idempotencyKey = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(root, "verifications"))
+        {
+            Content = new StringContent(JsonSerializer.Serialize(request, ClientJsonContext.Default.VerificationRequest), Encoding.UTF8, "application/json")
+        };
+        if (!string.IsNullOrEmpty(idempotencyKey))
+        {
+            message.Headers.Add("Idempotency-Key", idempotencyKey);
+        }
+
+        using var response = await CallAsync(message, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, ClientJsonContext.Default.StartedVerification, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Checks the code a person entered. A wrong code is an answer (<see cref="VerificationResult.Mismatch"/>), not an
+    /// exception; only <see cref="VerificationResult.Verified"/> proves they hold the destination, and only once.
+    /// </summary>
+    public async Task<VerificationCheck> CheckVerificationAsync(Guid id, string code, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(code);
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(root, "verifications/" + id.ToString("D", CultureInfo.InvariantCulture) + "/check"))
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new CodeBody(code), ClientJsonContext.Default.CodeBody), Encoding.UTF8, "application/json")
+        };
+
+        using var response = await CallAsync(message, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, ClientJsonContext.Default.VerificationCheck, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Reads where a verification stands and how the message that carried its code ended.</summary>
+    public async Task<Verification> GetVerificationAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Get, new Uri(root, "verifications/" + id.ToString("D", CultureInfo.InvariantCulture)));
+        using var response = await CallAsync(message, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, ClientJsonContext.Default.Verification, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal sealed record CodeBody(string Code);
+
     private async Task<AcceptedMessage> SendAsync<T>(
         string path, T message, JsonTypeInfo<T> type, string? idempotencyKey, CancellationToken cancellationToken)
     {

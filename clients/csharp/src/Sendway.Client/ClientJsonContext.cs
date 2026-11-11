@@ -13,4 +13,9 @@ namespace Sendway.Client;
 [JsonSerializable(typeof(AcceptedMessage))]
 [JsonSerializable(typeof(Message))]
 [JsonSerializable(typeof(MessageEvent))]
+[JsonSerializable(typeof(VerificationRequest))]
+[JsonSerializable(typeof(StartedVerification))]
+[JsonSerializable(typeof(VerificationCheck))]
+[JsonSerializable(typeof(Verification))]
+[JsonSerializable(typeof(SendwayClient.CodeBody))]
 internal sealed partial class ClientJsonContext : JsonSerializerContext;

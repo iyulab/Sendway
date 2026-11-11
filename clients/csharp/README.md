@@ -61,6 +61,28 @@ webhooks — but nothing leaves Sendway, and the destination picks the outcome: 
 starting with `refused`, `rejected`, `ratelimited` or `exhausted` (SMS: a number ending in `0001`–`0004`) gets the
 matching `FailureReason`; anything else is `Sent`. Point a development environment at one.
 
+## Verifying an address or number
+
+To learn that the person in front of you holds an email address or phone number, start a verification and check the
+code they enter. Sendway makes the code and the wording; your service decides what a successful check means.
+
+```csharp
+var started = await client.StartVerificationAsync(
+    new VerificationRequest(VerificationChannel.Sms, "+821012345678") { Purpose = "signup" },
+    idempotencyKey: signupId);
+
+// ...the person types the code they received...
+
+var check = await client.CheckVerificationAsync(started.Id, enteredCode);
+if (check.Result == VerificationResult.Verified) { /* they hold the number */ }
+```
+
+A wrong code is an answer (`Mismatch`, with `AttemptsLeft`), not an exception; a code works once, expires, and dies after
+`MaxAttempts` wrong tries. Asking for another code for the same destination within a short interval throws
+`DestinationRateLimited` with `RetryAfter` (the code already sent keeps working). A real tenant never receives the code;
+a sandbox tenant gets it in `StartedVerification.Code`, so tests can complete a check. Do not show
+`Verification.Delivery` to the person being verified: it says whether a number exists.
+
 ## Errors
 
 A refused call throws `SendwayException` with the HTTP `Status`, a `Code` to branch on (`InvalidRequest`,

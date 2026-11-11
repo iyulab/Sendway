@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `StartVerificationAsync`, `CheckVerificationAsync` and `GetVerificationAsync`: send a verification code to an address
+  or number, check what the person enters, and read where it stands. Sendway makes the code and the wording; a wrong
+  code is an answer (`VerificationResult.Mismatch`), not an exception. A sandbox tenant gets the code back in
+  `StartedVerification.Code`.
+
 - `SendwayErrorCode.DestinationRateLimited`: the service held back a message because the same address, number or
   device was sent to too recently or too often (HTTP 429 with `Retry-After`; other destinations are unaffected).
 

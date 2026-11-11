@@ -136,6 +136,25 @@ internal static class Names
         _ => FailureReason.Unknown
     };
 
+    public static VerificationResult CheckResult(string? text) => text switch
+    {
+        "verified" => VerificationResult.Verified,
+        "mismatch" => VerificationResult.Mismatch,
+        "expired" => VerificationResult.Expired,
+        "too_many_attempts" => VerificationResult.TooManyAttempts,
+        _ => VerificationResult.Unknown
+    };
+
+    public static VerificationState VerificationState(string? text) => text switch
+    {
+        "pending" => Client.VerificationState.Pending,
+        "verified" => Client.VerificationState.Verified,
+        "expired" => Client.VerificationState.Expired,
+        "too_many_attempts" => Client.VerificationState.TooManyAttempts,
+        "superseded" => Client.VerificationState.Superseded,
+        _ => Client.VerificationState.Unknown
+    };
+
     public static SendwayErrorCode Code(string? text) => text switch
     {
         "invalid_request" => SendwayErrorCode.InvalidRequest,
