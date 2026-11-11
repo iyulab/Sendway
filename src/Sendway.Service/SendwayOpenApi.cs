@@ -19,6 +19,12 @@ public static class SendwayOpenApi
         nameof(DeliveryStatus.Queued), nameof(DeliveryStatus.Sending), nameof(DeliveryStatus.Sent), nameof(DeliveryStatus.Failed)
     ];
 
+    private static readonly string[] CheckStatuses = ["verified", "mismatch", "expired", "too_many_attempts"];
+
+    private static readonly string[] VerificationStates = ["pending", "verified", "expired", "too_many_attempts", "superseded"];
+
+    private static readonly string[] VerificationChannels = [MessageChannels.Sms, MessageChannels.Email];
+
     private static readonly string[] FailureReasons =
     [
         MessageFailureReasons.RecipientRefused,
@@ -47,7 +53,8 @@ public static class SendwayOpenApi
         services.AddOpenApi(options =>
         {
             options.ShouldInclude = description =>
-                description.RelativePath?.StartsWith("messages", StringComparison.Ordinal) == true;
+                description.RelativePath?.StartsWith("messages", StringComparison.Ordinal) == true
+                || description.RelativePath?.StartsWith("verifications", StringComparison.Ordinal) == true;
 
             options.AddDocumentTransformer((document, _, _) =>
             {
@@ -57,7 +64,8 @@ public static class SendwayOpenApi
                     Version = "v1",
                     Description =
                         "Send email, SMS and app push through one HTTP API. A send is accepted with 202 and delivered " +
-                        "asynchronously; read the outcome from the message status or receive it as a Standard Webhooks event."
+                        "asynchronously; read the outcome from the message status or receive it as a Standard Webhooks event. " +
+                        "To check that a person holds an email address or phone number, start a verification and check the code they enter."
                 };
 
                 // The address is the deployment's, not the API's: a caller configures its own base URL,
@@ -87,7 +95,9 @@ public static class SendwayOpenApi
 
             options.AddOperationTransformer((operation, context, _) =>
             {
-                if (context.Description.HttpMethod == HttpMethods.Post)
+                // A check is not an acceptance of anything new: it has nothing to deduplicate.
+                if (context.Description.HttpMethod == HttpMethods.Post
+                    && context.Description.RelativePath?.EndsWith("/check", StringComparison.Ordinal) != true)
                 {
                     operation.Parameters ??= [];
                     operation.Parameters.Add(new OpenApiParameter
@@ -116,6 +126,29 @@ public static class SendwayOpenApi
                 if (type == typeof(MessageStatusResponse))
                 {
                     Restrict(schema, "reason", FailureReasons);
+                }
+
+                if (type == typeof(CheckVerificationResponse))
+                {
+                    Restrict(schema, "status", CheckStatuses);
+                }
+
+                if (type == typeof(VerificationStatusResponse))
+                {
+                    Restrict(schema, "status", VerificationStates);
+                    Restrict(schema, "channel", VerificationChannels);
+                }
+
+                if (type == typeof(VerificationDelivery))
+                {
+                    Restrict(schema, "status", Statuses);
+                    Restrict(schema, "reason", FailureReasons);
+                }
+
+                if (type == typeof(StartVerificationRequest))
+                {
+                    Restrict(schema, "channel", VerificationChannels);
+                    Restrict(schema, "locale", [.. VerificationLimits.Locales]);
                 }
 
                 if (type == typeof(ProblemDetails) || type == typeof(HttpValidationProblemDetails))

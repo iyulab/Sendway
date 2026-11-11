@@ -52,30 +52,17 @@ public static class MessageAcceptance
 
         if (result.Outcome == EnqueueOutcome.DestinationLimited)
         {
-            httpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            return ApiProblem.Create(
-                StatusCodes.Status429TooManyRequests,
-                ApiProblem.DestinationRateLimited,
-                $"This service sent to this '{channel}' destination too recently or too often. Nothing was stored; other destinations are not affected. " +
-                "Try again after Retry-After, or ask an administrator to change the limit.");
+            return DestinationLimited(httpContext, channel, result.RetryAfter!.Value);
         }
 
         if (result.Outcome == EnqueueOutcome.DailyLimitReached)
         {
-            httpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            return ApiProblem.Create(
-                StatusCodes.Status429TooManyRequests,
-                ApiProblem.DailyLimitReached,
-                $"This service already sent as many '{channel}' messages in the last 24 hours as it may. Nothing was stored; try again after Retry-After, or ask an administrator to raise the limit.");
+            return DailyLimitReached(httpContext, channel, result.RetryAfter!.Value);
         }
 
         if (result.Outcome == EnqueueOutcome.ChannelNotConfigured)
         {
-            return ApiProblem.Create(
-                StatusCodes.Status409Conflict,
-                ApiProblem.ChannelNotConfigured,
-                $"Nothing can be sent on the '{channel}' channel for this service yet: no credential for it is registered, " +
-                "neither the service's own nor a shared one. Nothing was stored; an administrator has to register one first.");
+            return ChannelNotConfigured(channel);
         }
 
         if (result.Outcome == EnqueueOutcome.KeyReused)
@@ -96,4 +83,34 @@ public static class MessageAcceptance
         var record = result.Record!;
         return Results.Accepted($"/messages/{record.Id}", new SendMessageResponse(record.Id, record.Status.ToString()));
     }
+
+    // The refusals a send and a verification start have in common.
+    internal static IResult DailyLimitReached(HttpContext httpContext, string channel, TimeSpan retryAfter)
+    {
+        SetRetryAfter(httpContext, retryAfter);
+        return ApiProblem.Create(
+            StatusCodes.Status429TooManyRequests,
+            ApiProblem.DailyLimitReached,
+            $"This service already sent as many '{channel}' messages in the last 24 hours as it may. Nothing was stored; try again after Retry-After, or ask an administrator to raise the limit.");
+    }
+
+    internal static IResult DestinationLimited(HttpContext httpContext, string channel, TimeSpan retryAfter, string? reason = null)
+    {
+        SetRetryAfter(httpContext, retryAfter);
+        return ApiProblem.Create(
+            StatusCodes.Status429TooManyRequests,
+            ApiProblem.DestinationRateLimited,
+            reason ?? $"This service sent to this '{channel}' destination too recently or too often. Nothing was stored; other destinations are not affected. " +
+            "Try again after Retry-After, or ask an administrator to change the limit.");
+    }
+
+    internal static IResult ChannelNotConfigured(string channel) =>
+        ApiProblem.Create(
+            StatusCodes.Status409Conflict,
+            ApiProblem.ChannelNotConfigured,
+            $"Nothing can be sent on the '{channel}' channel for this service yet: no credential for it is registered, " +
+            "neither the service's own nor a shared one. Nothing was stored; an administrator has to register one first.");
+
+    private static void SetRetryAfter(HttpContext httpContext, TimeSpan retryAfter) =>
+        httpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -39,7 +39,10 @@ public class OpenApiDocumentTests : IClassFixture<WebApplicationFactory<Program>
         var document = JsonNode.Parse(await _factory.CreateClient().GetStringAsync("/openapi/v1.json"))!;
 
         var paths = document["paths"]!.AsObject().Select(p => p.Key).ToList();
-        Assert.Equal(["/messages/email", "/messages/push", "/messages/sms", "/messages/{id}"], paths);
+        // Sending, reading a message, and verification codes; nothing of the administration API.
+        Assert.Equal(
+            ["/messages/email", "/messages/push", "/messages/sms", "/messages/{id}", "/verifications", "/verifications/{id}/check", "/verifications/{id}"],
+            paths);
         Assert.Equal("X-Api-Key", document["components"]!["securitySchemes"]!["tenantKey"]!["name"]!.GetValue<string>());
         Assert.NotNull(document["webhooks"]!["messageOutcome"]);
     }

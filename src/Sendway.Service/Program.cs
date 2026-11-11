@@ -97,6 +97,8 @@ builder.Services.AddSingleton<MessageDeliveryProcessor>();
 builder.Services.AddSingleton<IDeliveryProcessor>(sp => sp.GetRequiredService<MessageDeliveryProcessor>());
 
 builder.Services.AddOptions<WebhookDeliveryOptions>().BindConfiguration("Sendway:Webhooks");
+builder.Services.AddOptions<VerificationOptions>().BindConfiguration("Sendway:Verification");
+builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton<IWebhookEndpointStore, WebhookEndpointStore>();
 builder.Services.AddSingleton<WebhookOutbox>();
 builder.Services.AddSingleton<WebhookDeliverySignal>();
@@ -155,6 +157,13 @@ messages.MapSendEmailEndpoint();
 messages.MapSendPushEndpoint();
 messages.MapSendSmsEndpoint();
 messages.MapGetMessageStatusEndpoint();
+
+var verifications = app.MapGroup("/verifications")
+    .RequireAuthorization(policy => policy
+        .AddAuthenticationSchemes(TenantKeyAuthenticationHandler.SchemeName)
+        .RequireAuthenticatedUser())
+    .RequireRateLimiting(TenantRateLimitPolicy.PolicyName);
+verifications.MapVerificationEndpoints();
 
 var admin = app.MapGroup("/admin")
     .RequireAuthorization(policy => policy

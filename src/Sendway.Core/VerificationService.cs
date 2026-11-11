@@ -379,12 +379,17 @@ public sealed class VerificationService
 
     // The wording is fixed on purpose: Sendway stores and renders no templates, and the one thing it puts into
     // a message is the code it made itself.
-    private static string BuildPayload(VerificationStart request, string code)
+    public static (string Subject, string Body) BodyFor(string locale, string code, TimeSpan ttl)
     {
-        var minutes = Math.Max(1, (int)Math.Ceiling(request.Ttl.TotalMinutes));
-        var (subject, body) = request.Locale == "ko"
+        var minutes = Math.Max(1, (int)Math.Ceiling(ttl.TotalMinutes));
+        return locale == "ko"
             ? ("인증번호 안내", $"인증번호는 {code}입니다. {minutes}분 안에 입력해 주세요.")
             : ("Your verification code", $"Your verification code is {code}. It expires in {minutes} {(minutes == 1 ? "minute" : "minutes")}.");
+    }
+
+    private static string BuildPayload(VerificationStart request, string code)
+    {
+        var (subject, body) = BodyFor(request.Locale, code, request.Ttl);
 
         return request.Channel == MessageChannels.Sms
             ? MessagePayload.Serialize(new SmsMessage(request.TenantId, request.To, body))
