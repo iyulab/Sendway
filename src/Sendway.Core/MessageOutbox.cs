@@ -165,6 +165,10 @@ public sealed class MessageOutbox : IMessageOutbox
         };
 
         db.MessageRecords.Add(record);
+        if (submission.AlsoStore is { } alsoStore)
+        {
+            await alsoStore(db, record, cancellationToken);
+        }
 
         try
         {

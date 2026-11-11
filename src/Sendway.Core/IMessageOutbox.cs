@@ -39,6 +39,10 @@ public sealed record MessageSubmission(
     // The widest destination the limit's column holds; a longer one is not counted.
     public const int MaxDestinationLength = 512;
 
+    // Something to store in the same save as the message — a verification, which must exist exactly when the
+    // message carrying its code was accepted. Not part of the request's identity.
+    internal Func<SendwayDbContext, MessageRecord, CancellationToken, Task>? AlsoStore { get; init; }
+
     // The key a destination is stored and counted by: itself, or for one too long for the column a SHA-256 of
     // it — a long destination is limited like any other, not skipped.
     public static string DestinationKey(string destination) =>

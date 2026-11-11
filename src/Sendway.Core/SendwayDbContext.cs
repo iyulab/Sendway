@@ -11,6 +11,8 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
     public DbSet<MessageRecord> MessageRecords => Set<MessageRecord>();
 
+    public DbSet<Verification> Verifications => Set<Verification>();
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
@@ -58,6 +60,24 @@ public sealed class SendwayDbContext(DbContextOptions<SendwayDbContext> options)
 
             // Serves the per-destination limit: one tenant's recent messages to one destination.
             message.HasIndex(m => new { m.TenantId, m.Channel, m.Destination, m.AcceptedAt });
+        });
+
+        modelBuilder.Entity<Verification>(verification =>
+        {
+            verification.Property(v => v.Status).HasConversion<string>();
+            verification.Property(v => v.Channel).HasMaxLength(16);
+            verification.Property(v => v.Destination).HasMaxLength(MessageSubmission.MaxDestinationLength);
+            verification.Property(v => v.Purpose).HasMaxLength(VerificationLimits.MaxPurposeLength);
+            verification.Property(v => v.IdempotencyKey).HasMaxLength(255);
+            verification.Property(v => v.RequestHash).HasMaxLength(64);
+
+            // A retry of a start with the same key is the same verification, even while the first is in flight.
+            verification.HasIndex(v => new { v.TenantId, v.IdempotencyKey }).IsUnique();
+
+            // Serves "the pending codes for this destination and purpose" (replaced by a new start) and "the
+            // last code started for this destination" (the resend interval).
+            verification.HasIndex(v => new { v.TenantId, v.Channel, v.Destination, v.Purpose, v.Status });
+            verification.HasIndex(v => new { v.TenantId, v.Channel, v.Destination, v.CreatedAt });
         });
 
         modelBuilder.Entity<Tenant>(tenant =>
