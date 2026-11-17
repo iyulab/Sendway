@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-11-17
 
 - `StartVerificationAsync`, `CheckVerificationAsync` and `GetVerificationAsync`: send a verification code to an address
   or number, check what the person enters, and read where it stands. Sendway makes the code and the wording; a wrong

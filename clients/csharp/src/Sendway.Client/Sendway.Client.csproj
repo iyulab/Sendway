@@ -9,7 +9,7 @@
          some of its parameters (CS1573). -->
     <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <IsPackable>true</IsPackable>
     <PackageId>Sendway.Client</PackageId>
     <Authors>iyulab</Authors>
