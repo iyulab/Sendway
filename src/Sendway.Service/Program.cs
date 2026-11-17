@@ -57,7 +57,9 @@ builder.Services.AddKeyedSingleton<IEmailSender>(ChannelCredentialNames.EmailGra
 builder.Services.AddSingleton<IEmailSender, EmailSenderRouter>();
 builder.Services.AddSingleton<IPushSender, FcmPushSender>();
 builder.Services.AddSingleton<ISmsSender>(sp => new SolapiSmsSender(
-    new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+    new HttpClient(SolapiProxy.CreateHandler(
+        sp.GetRequiredService<IConfiguration>()[SolapiProxy.ConfigurationKey],
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger("Sendway.Solapi.Proxy")))
     {
         BaseAddress = SolapiSmsSender.DefaultBaseAddress
     },

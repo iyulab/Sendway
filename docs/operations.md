@@ -33,6 +33,7 @@ docker run -d --name sendway -p 8080:8080 \
 | `Sendway:AdminApiKey` | — | 관리 API 키. 없으면 관리 API를 쓸 수 없음 |
 | `Sendway:DataProtectionKeyPath` | `/data/dp-keys`(이미지) | 암호화 키 링 디렉터리 |
 | `Smtp:*` · `Fcm:*` · `Solapi:*` | — | 공용 채널 자격증명. 있으면 시작할 때마다 이 값이 저장되고 API로는 바꿀 수 없음 |
+| `Sendway:Solapi:ProxyUrl` | — | SOLAPI 호출만 이 프록시를 거쳐 보냄(`http://[사용자:비밀번호@]호스트:포트`, 비밀번호의 특수문자는 퍼센트 인코딩). 없으면 직접 나감. 아래 「SOLAPI 발신 주소 고정」 |
 | `Sendway:RateLimit:RequestsPerMinute` | `60` | 테넌트당 분당 요청 수 |
 | `Sendway:RateLimit:Enabled` | `true` | `false`면 한도 없음 |
 | `Sendway:Delivery:MaxAttempts` | `5` | 메시지 하나의 발송 시도 횟수 |
@@ -45,6 +46,15 @@ docker run -d --name sendway -p 8080:8080 \
 | `Sendway:Health:MaxFailedInLast24Hours` | 없음 | 정하면, 최근 24시간 실패가 이를 넘을 때 `/health`가 `Degraded`(없으면 실패 수는 보여 주기만 함) |
 | `Sendway:Health:MaxFailingFor` | `00:05:00` | 한 채널에서 마지막 성공 뒤 접수된 메시지들이 실패만 하며 이보다 오래 기다리면 `/health`가 `Degraded` |
 | `Sendway:Health:HeartbeatInterval` | `00:01:00` | 서비스가 자기 상태를 로그에 한 줄 남기는 간격(아래 「상태 하트비트」). 10초보다 짧게 정해도 10초 |
+
+### SOLAPI 발신 주소 고정
+
+SOLAPI는 API 키마다 호출을 허용할 출발지 주소를 정해 둘 수 있고, 목록에 없는 주소에서 온 호출은 `403`으로 거절합니다. 서비스가 나가는 주소가 고정되어 있지 않은 환경(주소가 돌아가며 바뀌는 컨테이너 플랫폼 등)에서는 주소가 고정된 프록시를 하나 두고 `Sendway:Solapi:ProxyUrl`로 SOLAPI 호출만 그리로 보냅니다. 그러면 프록시의 주소 하나만 SOLAPI에 등록하면 됩니다.
+
+- 프록시는 `CONNECT`로 TLS 구간을 그대로 통과시키는 HTTP 프록시(또는 SOCKS5)면 됩니다. 요청 내용과 서명은 SOLAPI와 Sendway 사이에서만 열리므로, 프록시는 API 키와 메시지 본문을 볼 수 없습니다.
+- 프록시는 `api.solapi.com:443`으로만 터널을 열도록 제한하고, 인증을 겁니다. 아무 곳에나 터널을 여는 프록시는 허용 주소를 가진 열린 통로가 됩니다.
+- 이 설정은 SOLAPI 호출에만 적용됩니다. 이메일·푸시는 그대로 직접 나갑니다. 테넌트가 자기 SOLAPI 자격증명을 등록한 경우에도 같은 프록시를 지납니다.
+- 프록시에서 실패한 발송은 다른 일시적 실패처럼 재시도됩니다. 메시지의 `error`에는 프록시 주소나 자격증명 없이 "outgoing proxy에서 실패했다"는 문장만 남고, 자세한 내용은 서비스 로그의 경고에 있습니다.
 
 ### 여러 인스턴스
 
