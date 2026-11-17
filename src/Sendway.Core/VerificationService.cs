@@ -278,6 +278,15 @@ public sealed class VerificationService
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var now = _timeProvider.GetUtcNow();
 
+        // The stored code is read before the try is counted. The try that uses up the last attempt erases the
+        // code, so a code read after counting could already be gone for a try that was counted earlier — its
+        // right code would be refused as expired. A count that succeeds means no erasing had happened yet,
+        // so what was read before it is the code to compare with.
+        var storedBeforeCounting = await db.Verifications.AsNoTracking()
+            .Where(v => v.Id == id && v.TenantId == tenantId)
+            .Select(v => v.ProtectedCode)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var counted = await db.Verifications
             .Where(v => v.Id == id && v.TenantId == tenantId && v.Status == VerificationStatus.Pending && v.Attempts < v.MaxAttempts && v.ExpiresAt > now)
             .ExecuteUpdateAsync(update => update.SetProperty(v => v.Attempts, v => v.Attempts + 1), cancellationToken);
@@ -295,7 +304,7 @@ public sealed class VerificationService
                 : new VerificationCheckResult(VerificationCheckOutcome.TooManyAttempts);
         }
 
-        var stored = row.ProtectedCode is { } protectedCode ? TryUnprotect(protectedCode) : null;
+        var stored = storedBeforeCounting is { } protectedCode ? TryUnprotect(protectedCode) : null;
         if (stored is null)
         {
             return new VerificationCheckResult(VerificationCheckOutcome.Expired);
